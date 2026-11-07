@@ -7,7 +7,7 @@ struct BreakView: View {
     @ObservedObject var model: AppModel
     let compact: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let mint = Color(red: 0.63, green: 0.89, blue: 0.76)
+    private let palette = BreakPalette()
 
     private var isLong: Bool { model.phase == .longBreak }
     private var message: String {
@@ -21,7 +21,7 @@ struct BreakView: View {
                     LinearGradient(colors: [Color(red: 0.035, green: 0.105, blue: 0.09),
                                             Color(red: 0.075, green: 0.19, blue: 0.15)],
                                    startPoint: .topLeading, endPoint: .bottomTrailing)
-                    Circle().fill(mint.opacity(0.045)).frame(width: 750, height: 750).offset(x: 350, y: -280)
+                    Circle().fill(palette.message.opacity(0.045)).frame(width: 750, height: 750).offset(x: 350, y: -280)
                 }.modifier(VisualTreatment(transparency: model.settings.breakTransparency))
                 VStack(spacing: 22) {
                     if model.settings.hasVisual {
@@ -30,29 +30,35 @@ struct BreakView: View {
                             .frame(width: min(400, geometry.size.width * 0.55),
                                    height: min(250, geometry.size.height * 0.29))
                     }
-                    if !message.isEmpty {
-                        Text(message)
-                            .font(.system(size: min(32, geometry.size.width / 25), weight: .light, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
-                            .lineLimit(5).frame(maxWidth: 650)
-                    }
-                    Text(model.timeText)
-                        .font(.system(size: 56, weight: .ultraLight, design: .rounded))
-                        .monospacedDigit().foregroundStyle(mint)
-                    if model.isPaused {
-                        Text(model.text("已暂停", "Paused")).font(.caption).foregroundStyle(mint)
-                    }
-                    HStack(spacing: 14) {
-                        if !compact {
-                            breakButton(model.isPaused ? model.text("继续", "Resume") : model.text("暂停", "Pause"),
-                                        symbol: model.isPaused ? "play.fill" : "pause.fill") { model.togglePause() }
+                    VStack(spacing: 22) {
+                        if !message.isEmpty {
+                            Text(message)
+                                .font(.system(size: min(32, geometry.size.width / 25), weight: .light, design: .rounded))
+                                .foregroundStyle(palette.message).multilineTextAlignment(.center)
+                                .lineLimit(5).frame(maxWidth: 650)
                         }
-                        Button(action: { model.endBreak() }) {
-                            Text("Esc").font(.system(size: 13)).padding(12).contentShape(Rectangle())
-                        }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.85))
-                    }.padding(.top, 4)
+                        Text(model.timeText)
+                            .font(.system(size: 56, weight: .ultraLight, design: .rounded))
+                            .monospacedDigit().foregroundStyle(palette.time)
+                        if model.isPaused {
+                            Text(model.text("已暂停", "Paused")).font(.caption).foregroundStyle(palette.secondary)
+                        }
+                        HStack(spacing: 14) {
+                            if !compact {
+                                breakButton(model.isPaused ? model.text("继续", "Resume") : model.text("暂停", "Pause"),
+                                            symbol: model.isPaused ? "play.fill" : "pause.fill") { model.togglePause() }
+                            }
+                            Button(action: { model.endBreak() }) {
+                                Text("Esc").font(.system(size: 13)).padding(12).contentShape(Rectangle())
+                            }.buttonStyle(.plain).foregroundStyle(palette.secondary)
+                        }.padding(.top, 4)
+                    }.padding(.horizontal, 28).padding(.vertical, 20)
+                        .background {
+                            RoundedRectangle(cornerRadius: 24).fill(.regularMaterial)
+                                .overlay(RoundedRectangle(cornerRadius: 24).fill(palette.scrim.opacity(0.65)))
+                                .opacity(model.settings.breakTransparency)
+                        }
                 }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .shadow(color: .black.opacity(model.settings.breakTransparency * 0.9), radius: 3, x: 0, y: 1)
 
             }
         }
@@ -74,9 +80,9 @@ struct BreakView: View {
             Label(title, systemImage: symbol)
                 .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 22).padding(.vertical, 12)
-                .background(.white.opacity(0.08), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.13)))
-        }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.85))
+                .background(palette.secondary.opacity(0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(palette.secondary.opacity(0.13)))
+        }.buttonStyle(.plain).foregroundStyle(palette.secondary)
     }
 }
 

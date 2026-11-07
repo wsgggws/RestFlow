@@ -168,7 +168,7 @@ struct SettingsView: View {
                             Slider(value: $model.settings.breakTransparency, in: 0...1)
                                 .accessibilityLabel(t("背景透明度", "Background transparency"))
                                 .help(t("0% 完全遮住桌面，100% 显示桌面；背景与动画一起变淡", "0% covers the desktop, 100% reveals it; background and artwork fade together"))
-                            Text("\(Int(model.settings.breakTransparency * 100))%")
+                            Text("\(Int((model.settings.breakTransparency * 100).rounded()))%")
                                 .monospacedDigit().frame(width: 38, alignment: .trailing)
                         }
                         if let error = model.mediaError {
@@ -263,7 +263,7 @@ struct SettingsView: View {
         Picker(title, selection: selection) {
             Text(t("无", "None")).tag(ReminderMessage.noneID)
             Text(t("随机", "Random")).tag(ReminderMessage.randomID)
-            ForEach(model.settings.messages) { message in
+            ForEach(model.settings.messageChoices(selectedID: selection.wrappedValue)) { message in
                 Text(message.displayText(in: model.settings.language).replacingOccurrences(of: "\n", with: " ")).lineLimit(1).tag(message.id)
             }
         }.pickerStyle(.menu)
@@ -288,11 +288,15 @@ struct SettingsView: View {
         scroll.documentView = editor
         alert.accessoryView = scroll
         alert.window.initialFirstResponder = editor
-        if alert.runModal() == .alertFirstButtonReturn, !model.addMessage(editor.string), model.configurationError == nil {
-            let error = NSAlert()
-            error.messageText = t("文案未添加", "Message not added")
-            error.informativeText = t("请输入 1–2000 个字符。文案库最多 100 条。", "Enter 1–2,000 characters. The library holds up to 100 messages.")
-            error.runModal()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let result = model.addMessage(editor.string)
+        if result == .duplicate || result == .invalid {
+            let notice = NSAlert()
+            notice.messageText = result == .duplicate ? t("文案已存在", "Message already exists") : t("文案未添加", "Message not added")
+            notice.informativeText = result == .duplicate
+                ? t("请从下拉框选择已有文案。", "Choose the existing message from the list.")
+                : t("请输入 1–2000 个字符。文案库最多 100 条。", "Enter 1–2,000 characters. The library holds up to 100 messages.")
+            notice.runModal()
         }
     }
 

@@ -32,7 +32,7 @@ public struct BreakContent: Equatable, Sendable {
 
     public init(settings: AppSettings, choose: ([String]) -> String = { $0.randomElement()! }) {
         func resolve(_ id: String) -> String {
-            id == ReminderMessage.randomID ? choose(settings.messages.map(\.id)) : id
+            id == ReminderMessage.randomID ? choose(settings.messageChoices().map(\.id)) : id
         }
         shortMessageID = resolve(settings.shortMessageID)
         longMessageID = resolve(settings.longMessageID)

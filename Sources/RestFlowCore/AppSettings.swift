@@ -24,6 +24,13 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
         language == .english ? (englishText ?? text) : text
     }
 
+    /// Compare menu labels without changing the user's original punctuation or emoji.
+    public static func selectionKey(_ text: String) -> String {
+        text.precomposedStringWithCanonicalMapping
+            .components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+            .folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    }
+
     public static let randomID = "__random__"
     public static let noneID = "__none__"
 
@@ -81,6 +88,29 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public func message(for phase: SessionPhase, resolvedID: String? = nil) -> String {
         let id = phase == .longBreak ? longMessageID : shortMessageID
         return messages.first(where: { $0.id == (id == ReminderMessage.randomID ? resolvedID : id) })?.displayText(in: language) ?? ""
+    }
+
+    public func containsMessage(_ text: String) -> Bool {
+        let key = ReminderMessage.selectionKey(text)
+        return messages.contains { message in
+            [message.text, message.englishText].compactMap { $0 }.contains { ReminderMessage.selectionKey($0) == key }
+        }
+    }
+
+    /// Old files may contain duplicate labels; retain the selected ID without deleting user data.
+    public func messageChoices(selectedID: String? = nil) -> [ReminderMessage] {
+        var result: [ReminderMessage] = []
+        var indices: [String: Int] = [:]
+        for message in messages {
+            let key = ReminderMessage.selectionKey(message.displayText(in: language))
+            if let index = indices[key] {
+                if message.id == selectedID { result[index] = message }
+            } else {
+                indices[key] = result.count
+                result.append(message)
+            }
+        }
+        return result
     }
 
     public var hasVisual: Bool { mediaPath != nil || visualID != BuiltinVisual.noneID }

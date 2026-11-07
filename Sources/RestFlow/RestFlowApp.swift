@@ -104,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func refreshStatus() {
-        let marker = model.isPaused ? "⏸ " : (model.phase.isBreak ? model.text("休 ", "Break ") : "")
+        let marker = model.isPaused ? "⏸ " : (model.phase.isBreak ? "☕︎ " : "")
         let showsTime = model.settings.showMenuBarTime
         let title = showsTime ? "\(marker)\(model.timeText)" : ""
         if lastStatusTitle != title {
@@ -223,6 +223,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         check(delegate.statusItem.button?.title == "" && menu.items.first?.title == "专注：24:59", "hidden menu-bar time leaves menu countdown visible")
         delegate.model.startShortBreak()
         check(menu.items.first?.title == "休息：00:30", "menu shows rest countdown")
+        delegate.model.settings.showMenuBarTime = true
+        check(delegate.statusItem.button?.title == "☕︎ 00:30", "menu-bar rest marker is a language-independent symbol")
+        delegate.model.togglePause()
+        check(delegate.statusItem.button?.title == "⏸ 00:30", "pause symbol takes precedence while resting")
+        delegate.model.togglePause()
         delegate.model.settings.language = .english
         delegate.menuWillOpen(menu)
         check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")

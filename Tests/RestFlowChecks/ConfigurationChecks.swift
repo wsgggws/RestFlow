@@ -159,6 +159,54 @@ func configurationChecks() -> [(String, () -> Void)] {
             settings.volume = 0
             expectEqual(settings.hasSound, false)
         }),
+        ("message duplicate comparison respects whitespace, Unicode and translations", {
+            var settings = AppSettings()
+            settings.messages.append(ReminderMessage(id: "accent", text: "Café 💧"))
+            expectEqual(settings.containsMessage(" \nCaf\u{301}e 💧 "), false)
+            expectEqual(settings.containsMessage(" \nCafe\u{301}   💧 \t"), true)
+            expectEqual(settings.containsMessage(" LOOK INTO THE DISTANCE.\nGive your eyes a rest. "), true)
+            expectEqual(settings.containsMessage("看向远方，让眼睛休息一下。"), true)
+            expectEqual(settings.containsMessage("Café ❤️"), false)
+            expectEqual(settings.containsMessage("Cafe 💧"), false)
+        }),
+        ("message choices deduplicate legacy labels while preserving selected IDs and text", {
+            var settings = AppSettings()
+            settings.messages = [
+                ReminderMessage(id: "first", text: " 喝水 💧 ", englishText: "Take a break"),
+                ReminderMessage(id: "duplicate", text: "喝水   💧", englishText: "TAKE A\nBREAK"),
+                ReminderMessage(id: "other", text: "走走 🚶", englishText: "Take a break"),
+                ReminderMessage(id: "accent", text: "Café"),
+                ReminderMessage(id: "equivalent", text: "Cafe\u{301}"),
+            ]
+            settings.shortMessageID = "duplicate"
+            settings.longMessageID = "other"
+            let original = settings
+            expectEqual(settings.messageChoices().map(\.id), ["first", "other", "accent"])
+            expectEqual(settings.messageChoices(selectedID: "duplicate").map(\.id), ["duplicate", "other", "accent"])
+            expectEqual(settings, original)
+            expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), original)
+            settings.language = .english
+            expectEqual(settings.messageChoices().map(\.id), ["first", "accent"])
+            expectEqual(settings.messageChoices(selectedID: "other").map(\.id), ["other", "accent"])
+            expectEqual(settings.messages.count, 5)
+            expectEqual(settings.message(for: .shortBreak), "TAKE A\nBREAK")
+        }),
+        ("random reminder pool contains each visible message once", {
+            var settings = AppSettings()
+            settings.messages.append(ReminderMessage(id: "duplicate", text: "  看向远方，让眼睛休息一下。  "))
+            settings.shortMessageID = ReminderMessage.randomID
+            settings.longMessageID = ReminderMessage.randomID
+            var draws = 0
+            let content = BreakContent(settings: settings, choose: { ids in
+                draws += 1
+                expectEqual(ids.count, ReminderMessage.defaults.count)
+                expectEqual(ids.contains("duplicate"), false)
+                return ids.first!
+            })
+            expectEqual(draws, 2)
+            expectEqual(content.shortMessageID, "eyes")
+            expectEqual(content.longMessageID, "eyes")
+        }),
         ("visual catalog validation and legacy media paths", {
             expectEqual(BuiltinVisual.allCases.count, 12)
             for visual in BuiltinVisual.allCases {

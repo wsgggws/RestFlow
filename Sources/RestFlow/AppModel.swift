@@ -270,12 +270,16 @@ final class AppModel: ObservableObject {
 
     func playSound() { feedback.play(settings: settings, customURL: soundURL) }
 
-    func addMessage(_ text: String) -> Bool {
+    enum MessageAdditionResult { case added, duplicate, invalid, failed }
+
+    func addMessage(_ text: String) -> MessageAdditionResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, text.count <= 2000, settings.messages.count < 100 else { return false }
+        guard !trimmed.isEmpty, text.count <= 2000 else { return .invalid }
+        guard !settings.containsMessage(text) else { return .duplicate }
+        guard settings.messages.count < 100 else { return .invalid }
         let message = ReminderMessage(text: text)
         settings.messages.append(message)
-        return settings.messages.contains(where: { $0.id == message.id })
+        return settings.messages.contains(where: { $0.id == message.id }) ? .added : .failed
     }
 
     func requestNotifications() {
