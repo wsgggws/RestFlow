@@ -14,11 +14,11 @@
 | `language` | `"zh-Hans"` | `"zh-Hans"` 或 `"en"`，立即切换界面及内置文案 |
 | `checkForUpdatesAutomatically` | `true` | 启动／打开菜单时自动检查 GitHub 最新 Release，同一进程两次自动检查至少间隔 24 小时；关闭后仍可手动检查 |
 | `breakTransparency` | `0` | `0...1`，0 完全遮住桌面，1 透出桌面；整个背景与动画同步变淡，文字、计时与 Esc 保持可见 |
-| `launchAtLogin` | `false` | 开机启动的应用偏好；macOS 仍可要求用户批准 |
+| `launchAtLogin` | `false` | 菜单中的“开机启动”；macOS 仍可要求用户批准 |
 | `pauseShortcut` | `null` | 暂停／继续的全局快捷键，见下文 |
 | `restartShortcut` | `null` | 重新开始的全局快捷键 |
 | `restNowShortcut` | `null` | 现在休息的全局快捷键 |
-| `showMenuBarTime` | `true` | 菜单栏是否显示时间；关闭后叶子图标与菜单保留 |
+| `showMenuBarTime` | `true` | 菜单中的“菜单栏显示时间”；关闭后叶子图标与菜单保留 |
 | `workMinutes` | `25` | `1...240`，分钟 |
 | `shortBreakSeconds` | `30` | `5...1800`，秒 |
 | `longBreakMinutes` | `5` | `1...120`，分钟 |
@@ -142,7 +142,7 @@ open dist/RestFlow.app --args --preview --paused
 
 上例为 ⌃⌥P、⌃⌥R、⌃⌥B。`modifiers` 使用 Carbon 位掩码之和：⌘=256、⇧=512、⌥=2048、⌃=4096。推荐通过界面录入。录入和文件重载均检查重复、系统符号快捷键、常用保留组合及系统注册占用；失败保留旧绑定及原文件。macOS 不提供其他应用所有局部快捷键的完整清单，未启动应用或动态拦截器的组合无法穷举。正常全局注册不要求辅助功能权限；某些系统保留按键可能先被系统处理，无法录入时换一个组合。
 
-开机启动使用 `SMAppService.mainApp`。启用后若系统要求批准，点击出现的入口在“系统设置 → 通用 → 登录项”允许；系统批准不写入 JSON。建议将应用放在 `/Applications` 后启用，移动或删除应用可能使登录项目失效。
+“菜单栏显示时间”与“开机启动”直接位于菜单的“设置…”之后、“退出”之前，勾号表示启用；通用设置不重复显示。开机启动使用 `SMAppService.mainApp`。启用后若系统要求批准，点击菜单中出现的入口在“系统设置 → 通用 → 登录项”允许；系统批准不写入 JSON。建议将应用放在 `/Applications` 后启用，移动或删除应用可能使登录项目失效。
 
 ## 独立自测
 
@@ -155,3 +155,9 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-t
 构建包的 `--check-system-integration` 检查 Carbon 注册、事件分发与冲突回滚，只读取登录项目状态，不启用或关闭登录项目。
 
 `--check-break-integration` 使用临时配置和可控时钟，检查短休息倒计时、背景 alpha、失焦后的全局 Esc 及窗口／按键状态清理；会短暂显示休息窗口，不修改用户配置或登录项目。
+
+## 应用名称（0.9.0）
+
+系统语言优先匹配中文时显示“坐忘录”，英文时显示 RestFlow；由 macOS Bundle 本地化选择，与 `language` 控制的界面语言独立。中文、英文都作为 Spotlight 搜索别名；安装或升级后需等待系统索引更新。应用文件名保持 `RestFlow.app`，bundle ID、配置目录和 Homebrew 命令不变。
+
+构建时打包 `Resources/*.lproj/InfoPlist.strings`。可用 `--check-name-integration -AppleLanguages '(en)'` 或 `'(zh-Hans)'`、`'(zh-Hant)'` 验证名称资源和实际语言选择，不更改系统语言。

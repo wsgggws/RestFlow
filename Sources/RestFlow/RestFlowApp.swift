@@ -2,12 +2,16 @@ import AppKit
 import SwiftUI
 import UserNotifications
 import RestFlowCore
+import ServiceManagement
 
 @main
 enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-name-integration") {
+            exit(AppIdentity.checkIntegration())
+        }
         if CommandLine.arguments.contains("--check-system-integration") {
             exit(SystemIntegrationChecks.run())
         }
@@ -51,11 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let icon = NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: "RestFlow")!
+        let icon = NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: AppIdentity.displayName)!
         icon.size = NSSize(width: 18, height: 18)
         icon.isTemplate = true
         statusItem.button?.image = icon
-        statusItem.button?.setAccessibilityLabel("RestFlow")
+        statusItem.button?.setAccessibilityLabel(AppIdentity.displayName)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let menu = NSMenu()
@@ -66,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         model.onPhaseChange = { [weak self] in self?.breakWindows.sync() }
         model.onSettingsChange = { [weak self] in
             guard let self else { return }
-            self.settingsWindow?.title = self.model.text("RestFlow 设置", "RestFlow Settings")
+            self.settingsWindow?.title = self.settingsTitle
             self.breakWindows.updateTitles()
             self.breakWindows.reconcilePresentation()
             self.refreshStatus()
@@ -144,12 +148,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if model.phase.isBreak { addItem(model.text("提前结束休息", "End break"), action: #selector(endBreak), to: menu) }
         menu.addItem(.separator())
         addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
+        addItem(model.text("菜单栏显示时间", "Show time in menu bar"), action: #selector(toggleMenuBarTime),
+                checked: model.settings.showMenuBarTime, to: menu)
+        addItem(model.text("开机启动", "Launch at login"), action: #selector(toggleLaunchAtLogin),
+                checked: model.settings.launchAtLogin, to: menu)
+        if model.settings.launchAtLogin && model.loginItem.status == .requiresApproval {
+            addItem(model.text("在系统设置中允许启动…", "Allow in System Settings…"), action: #selector(openLoginSettings), to: menu)
+        }
         menu.addItem(.separator())
-        addItem(model.text("退出 RestFlow", "Quit RestFlow"), action: #selector(quit), to: menu)
+        addItem(model.text("退出 \(AppIdentity.displayName)", "Quit \(AppIdentity.displayName)"), action: #selector(quit), to: menu)
     }
 
-    private func addItem(_ title: String, action: Selector, shortcut: RestFlowCore.KeyboardShortcut? = nil, to menu: NSMenu) {
+    private func addItem(_ title: String, action: Selector, shortcut: RestFlowCore.KeyboardShortcut? = nil,
+                         checked: Bool = false, to menu: NSMenu) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.state = checked ? .on : .off
         if let shortcut {
             item.keyEquivalent = ShortcutController.keyEquivalent(shortcut)
             item.keyEquivalentModifierMask = ShortcutController.cocoaModifiers(shortcut)
@@ -163,13 +176,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func restart() { model.restart() }
     @objc private func endBreak() { model.endBreak() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
+    @objc private func toggleMenuBarTime() {
+        model.settings.showMenuBarTime.toggle()
+        showConfigurationErrorIfNeeded()
+    }
+    @objc private func toggleLaunchAtLogin() {
+        model.settings.launchAtLogin.toggle()
+        showConfigurationErrorIfNeeded()
+    }
+    @objc private func openLoginSettings() { SMAppService.openSystemSettingsLoginItems() }
+
+    private var settingsTitle: String { "\(AppIdentity.displayName) \(model.text("设置", "Settings"))" }
+
+    private func showConfigurationErrorIfNeeded() {
+        guard let error = model.configurationError else { return }
+        let alert = NSAlert()
+        alert.messageText = model.text("设置未更改", "Setting not changed")
+        alert.informativeText = error
+        alert.runModal()
+    }
 
     @objc private func showSettings() {
         if settingsWindow == nil {
             let view = SettingsView(model: model, updates: updates) { [weak self] in self?.breakWindows.preview() }
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            window.title = model.text("RestFlow 设置", "RestFlow Settings")
+            window.title = settingsTitle
             window.contentView = NSHostingView(rootView: view)
             window.isReleasedWhenClosed = false
             window.delegate = self
@@ -197,7 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         _ = try? ConfigurationStore(directory: directory).load(orCreate: settings)
         var now: TimeInterval = 100
         let delegate = AppDelegate()
-        delegate.model = AppModel(directory: directory, clock: { now })
+        let loginItem = MenuCheckLoginItem()
+        delegate.model = AppModel(directory: directory, loginItem: loginItem, clock: { now })
         delegate.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         defer {
             delegate.model.stop()
@@ -216,6 +249,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         check(delegate.statusItem.button?.toolTip == nil, "status refresh never creates a floating countdown tooltip")
         delegate.menuWillOpen(menu)
         check(menu.items.first?.title == "专注：25:00", "menu shows focus countdown")
+        func item(_ action: Selector) -> NSMenuItem? { menu.items.first { $0.action == action } }
+        func click(_ action: Selector) {
+            if let selected = item(action) { _ = NSApp.sendAction(action, to: selected.target, from: selected) }
+            delegate.menuWillOpen(menu)
+        }
+        let settingsIndex = menu.items.firstIndex { $0.action == #selector(showSettings) }!
+        check(menu.items[settingsIndex + 1].action == #selector(toggleMenuBarTime) &&
+              menu.items[settingsIndex + 2].action == #selector(toggleLaunchAtLogin) &&
+              menu.items[settingsIndex + 3].isSeparatorItem && menu.items[settingsIndex + 4].action == #selector(quit),
+              "menu toggles sit between Settings and Quit")
+        check(item(#selector(toggleMenuBarTime))?.state == .on && item(#selector(toggleLaunchAtLogin))?.state == .off,
+              "native checkmarks reflect initial preferences")
+        click(#selector(toggleMenuBarTime))
+        check(item(#selector(toggleMenuBarTime))?.state == .off && delegate.statusItem.button?.title == "" &&
+              (try? ConfigurationStore(directory: directory).load(orCreate: settings).showMenuBarTime) == false,
+              "menu action hides time and persists the unchecked preference")
+        click(#selector(toggleMenuBarTime))
+        check(item(#selector(toggleMenuBarTime))?.state == .on && delegate.statusItem.button?.title == "25:00",
+              "menu action restores time and checkmark")
+        click(#selector(toggleLaunchAtLogin))
+        check(loginItem.status == .enabled && item(#selector(toggleLaunchAtLogin))?.state == .on &&
+              (try? ConfigurationStore(directory: directory).load(orCreate: settings).launchAtLogin) == true,
+              "menu login action applies and persists using an isolated service")
+        click(#selector(toggleLaunchAtLogin))
+        check(loginItem.status == .notRegistered && item(#selector(toggleLaunchAtLogin))?.state == .off,
+              "menu login action disables and clears the checkmark")
+        loginItem.needsApproval = true
+        click(#selector(toggleLaunchAtLogin))
+        check(item(#selector(openLoginSettings)) != nil && loginItem.status == .requiresApproval,
+              "pending login approval provides a System Settings menu entry")
+        click(#selector(toggleLaunchAtLogin))
+        check(item(#selector(openLoginSettings)) == nil, "disabling login removes the approval entry")
+        loginItem.rejectChanges = true
+        delegate.model.settings.launchAtLogin = true
+        delegate.menuWillOpen(menu)
+        check(delegate.model.configurationError != nil && !delegate.model.settings.launchAtLogin &&
+              item(#selector(toggleLaunchAtLogin))?.state == .off &&
+              (try? ConfigurationStore(directory: directory).load(orCreate: settings).launchAtLogin) == false,
+              "failed login registration preserves unchecked preference and saved configuration")
+        loginItem.rejectChanges = false
+        let accepted = try! Data(contentsOf: directory.appendingPathComponent("config.json"))
+        var external = delegate.model.settings
+        external.volume = 0.3
+        let externalData = try! ConfigurationStore.encode(external)
+        try! externalData.write(to: directory.appendingPathComponent("config.json"), options: .atomic)
+        delegate.model.settings.showMenuBarTime = false
+        check(delegate.model.configurationError != nil && delegate.model.settings.showMenuBarTime &&
+              (try? Data(contentsOf: directory.appendingPathComponent("config.json"))) == externalData,
+              "external file conflict rolls back the menu preference without overwriting edits or recursing")
+        try! accepted.write(to: directory.appendingPathComponent("config.json"), options: .atomic)
         now += 1
         delegate.model.refresh()
         check(menu.items.first?.title == "专注：24:59", "open menu countdown refreshes with the timer")
@@ -233,5 +316,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")
         check(delegate.statusItem.button?.toolTip == nil, "tooltip remains absent after phase and language changes")
         return failures == 0 ? 0 : 1
+    }
+}
+
+/// Menu diagnostics never register or unregister the user's actual login item.
+@MainActor
+private final class MenuCheckLoginItem: LoginItemManaging {
+    var status: SMAppService.Status = .notRegistered
+    var needsApproval = false
+    var rejectChanges = false
+    func apply(enabled: Bool) throws {
+        if rejectChanges { throw ConfigurationError.invalid("Diagnostic login registration failure") }
+        status = enabled ? (needsApproval ? .requiresApproval : .enabled) : .notRegistered
     }
 }

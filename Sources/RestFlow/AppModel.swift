@@ -7,6 +7,7 @@ import UserNotifications
 final class AppModel: ObservableObject {
     @Published var settings: AppSettings {
         didSet {
+            guard !restoringSettings else { return }
             if !applyingFile {
                 let loginChanged = settings.launchAtLogin != oldValue.launchAtLogin
                 let loginWasEnabled = loginChanged && (loginItem.status == .enabled || loginItem.status == .requiresApproval)
@@ -22,7 +23,10 @@ final class AppModel: ObservableObject {
                 } catch {
                     try? shortcuts.apply(oldValue)
                     if changedLoginItem { try? loginItem.apply(enabled: loginWasEnabled) }
+                    // @Published's setter re-enters didSet; restoring must not retry a failed save/integration.
+                    restoringSettings = true
                     settings = oldValue
+                    restoringSettings = false
                     configurationError = error.localizedDescription
                 }
             }
@@ -51,7 +55,7 @@ final class AppModel: ObservableObject {
     @Published var soundError: String?
     @Published private(set) var mediaIsValid = true
     let shortcuts = ShortcutController()
-    let loginItem = LoginItemController()
+    let loginItem: any LoginItemManaging
     let feedback = FeedbackService()
     let configuration: ConfigurationStore
     var onPhaseChange: (() -> Void)?
@@ -60,6 +64,7 @@ final class AppModel: ObservableObject {
     private var engine: SessionEngine
     private var timer: Timer?
     private var applyingFile = false
+    private var restoringSettings = false
     private var nextConfigCheck: TimeInterval = 0
     private var resumeAfterSleep = false
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -67,8 +72,10 @@ final class AppModel: ObservableObject {
     private let clock: () -> TimeInterval
     private var now: TimeInterval { clock() }
 
-    init(directory: URL? = nil, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil,
+         clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.clock = clock
+        self.loginItem = loginItem ?? LoginItemController()
         let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
         self.configuration = configuration
         MediaStore.configurationDirectory = configuration.directory
@@ -87,7 +94,7 @@ final class AppModel: ObservableObject {
         configurationError = errorMessage
         do {
             try shortcuts.apply(loaded)
-            if directory == nil && loaded.launchAtLogin { try loginItem.apply(enabled: true) }
+            if directory == nil && loaded.launchAtLogin { try self.loginItem.apply(enabled: true) }
         } catch { configurationError = error.localizedDescription }
         if errorMessage != nil {
             engine.pause(at: clock())

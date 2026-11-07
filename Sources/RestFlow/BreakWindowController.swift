@@ -32,7 +32,7 @@ final class BreakWindowController {
     }
 
     func updateTitles() {
-        windows.values.forEach { $0.title = model.text("RestFlow 休息", "RestFlow Break") }
+        windows.values.forEach { $0.title = "\(AppIdentity.displayName) \(model.text("休息", "Break"))" }
     }
 
     func reconcilePresentation() {
@@ -70,7 +70,6 @@ final class BreakWindowController {
             else {
                 window = BreakOverlayWindow(contentRect: screen.frame, styleMask: [.borderless],
                                   backing: .buffered, defer: false, screen: screen)
-                window.title = "RestFlow 休息"
                 window.level = .screenSaver
                 window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 window.isReleasedWhenClosed = false
@@ -84,7 +83,7 @@ final class BreakWindowController {
                 windows[id] = window
             }
             window.setFrame(screen.frame, display: true)
-            window.title = model.text("RestFlow 休息", "RestFlow Break")
+            window.title = "\(AppIdentity.displayName) \(model.text("休息", "Break"))"
             // Existing windows already observe the shared model; avoid rebuilding animations each tick.
             if let host = window.contentView as? NSHostingView<BreakView> {
                 host.rootView = makeView()

@@ -13,6 +13,9 @@ mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources" "$APP_PATH/Co
 cp "$BIN_PATH/RestFlow" "$APP_PATH/Contents/MacOS/RestFlow"
 cp Resources/Info.plist "$APP_PATH/Contents/Info.plist"
 cp Resources/Lottie-LICENSE.txt LICENSE THIRD_PARTY_NOTICES.md "$APP_PATH/Contents/Resources/"
+for LOCALIZATION in Resources/*.lproj; do
+    ditto "$LOCALIZATION" "$APP_PATH/Contents/Resources/$(basename "$LOCALIZATION")"
+done
 
 # SwiftPM links the official prebuilt framework; the app must carry its own copy.
 LOTTIE_FRAMEWORK="$(find .build/artifacts -type d -path '*/macos-arm64_x86_64/Lottie.framework' -print -quit)"

@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 import RestFlowCore
-import ServiceManagement
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
@@ -14,7 +13,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "leaf.fill").foregroundStyle(accent)
-                Text("RestFlow").font(.system(size: 16, weight: .semibold, design: .rounded))
+                Text(AppIdentity.displayName).font(.system(size: 16, weight: .semibold, design: .rounded))
                 Spacer()
                 Text(model.isPaused ? t("已暂停", "Paused") : model.phaseTitle)
                     .font(.caption).foregroundStyle(.secondary)
@@ -59,11 +58,6 @@ struct SettingsView: View {
                             Text("简体中文").tag(AppLanguage.simplifiedChinese)
                             Text("English").tag(AppLanguage.english)
                         }
-                        Toggle(t("在菜单栏显示剩余时间", "Show remaining time in the menu bar"), isOn: $model.settings.showMenuBarTime)
-                        Toggle(t("开机启动", "Launch at login"), isOn: $model.settings.launchAtLogin)
-                        if model.settings.launchAtLogin && model.loginItem.status == .requiresApproval {
-                            Button(t("在系统设置中允许启动", "Allow in System Settings")) { SMAppService.openSystemSettingsLoginItems() }
-                        }
                     }.padding(8)
                 } label: { Label(t("界面", "Interface"), systemImage: "menubar.rectangle") }
                 GroupBox {
@@ -87,7 +81,7 @@ struct SettingsView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("RestFlow \(updates.currentVersion)")
+                            Text("\(AppIdentity.displayName) \(updates.currentVersion)")
                             Spacer()
                             Button(updates.status(in: model.settings.language)) {
                                 if case .available = updates.state { updates.openRelease() }
