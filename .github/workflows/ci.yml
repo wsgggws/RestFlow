@@ -1,0 +1,16 @@
+name: macOS checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check timer, configuration and release versions
+        run: ./scripts/test.sh
+      - name: Build and verify app
+        run: ./scripts/build-app.sh

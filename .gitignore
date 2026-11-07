@@ -1,0 +1,33 @@
+# SwiftPM and generated app / release archives
+.build/
+.swiftpm/
+dist/
+DerivedData/
+*.dSYM/
+*.xcarchive/
+
+# macOS and editor state
+.DS_Store
+.AppleDouble
+.LSOverride
+*.xcuserstate
+xcuserdata/
+.idea/
+.vscode/
+
+# Local configuration, credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.key
+config.local.json
+
+# Scratch / logs
+work/
+outputs/
+*.log
+*.tmp

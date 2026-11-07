@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "language": "zh-Hans",
+  "showMenuBarTime": true,
+  "workMinutes": 25,
+  "shortBreakSeconds": 30,
+  "longBreakMinutes": 5,
+  "cycles": 2,
+  "prealertEnabled": true,
+  "warningSeconds": 15,
+  "soundEnabled": true,
+  "soundName": "Glass",
+  "soundPath": null,
+  "volume": 0.5,
+  "mediaPath": null,
+  "messages": [
+    {
+      "id": "eyes",
+      "text": "看向远方，让眼睛休息一下。",
+      "englishText": "Look into the distance. Give your eyes a rest."
+    },
+    {
+      "id": "stretch",
+      "text": "站起来，伸个懒腰，喝一杯水。",
+      "englishText": "Stand up, stretch, and have some water."
+    },
+    {
+      "id": "breathe",
+      "text": "放松肩膀，慢慢呼吸。",
+      "englishText": "Relax your shoulders. Take a slow breath."
+    },
+    {
+      "id": "walk",
+      "text": "离开屏幕，走动一会儿 🌿",
+      "englishText": "Step away from the screen. Take a little walk 🌿"
+    },
+    {
+      "id": "stillness",
+      "text": "致虚极，守静笃。——《道德经》第十六章",
+      "englishText": "Empty the mind; remain deeply still. — Dao De Jing, 16"
+    },
+    {
+      "id": "water",
+      "text": "上善若水。——《道德经》第八章",
+      "englishText": "The highest goodness is like water. — Dao De Jing, 8"
+    },
+    {
+      "id": "journey",
+      "text": "千里之行，始于足下。——《道德经》第六十四章",
+      "englishText": "A journey of a thousand miles begins beneath your feet. — Dao De Jing, 64"
+    },
+    {
+      "id": "balance",
+      "text": "文武之道，一张一弛。——《礼记·杂记下》",
+      "englishText": "The way of balance is to alternate tension and relaxation. — Book of Rites"
+    },
+    {
+      "id": "joy",
+      "text": "知之者不如好之者，好之者不如乐之者。——《论语·雍也》",
+      "englishText": "Knowing is less than loving; loving is less than finding joy. — Analects, Yong Ye"
+    },
+    {
+      "id": "nature",
+      "text": "人法地，地法天，天法道，道法自然。——《道德经》第二十五章",
+      "englishText": "Human follows earth, earth follows heaven, heaven follows the Way, and the Way follows nature. — Dao De Jing, 25"
+    },
+    {
+      "id": "learn",
+      "text": "三人行，必有我师焉。——《论语·述而》",
+      "englishText": "Among any three people walking together, there is someone I can learn from. — Analects, Shu Er"
+    },
+    {
+      "id": "flow",
+      "text": "逝者如斯夫，不舍昼夜。——《论语·子罕》",
+      "englishText": "It flows on like this, never ceasing day or night. — Analects, Zi Han"
+    }
+  ],
+  "shortMessageID": "eyes",
+  "longMessageID": "stretch",
+  "visualID": "rings",
+  "visualGrayness": 0,
+  "checkForUpdatesAutomatically": true
+}
