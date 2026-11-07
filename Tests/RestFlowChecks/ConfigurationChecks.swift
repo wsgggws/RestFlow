@@ -26,9 +26,55 @@ func configurationChecks() -> [(String, () -> Void)] {
             expectEqual(settings.language, .english)
             expectEqual(settings.showMenuBarTime, false)
             expectEqual(settings.workMinutes, 25)
-            expectEqual(settings.visualGrayness, 0)
+            expectEqual(settings.visualOpacity, 1)
             expectEqual(settings.checkForUpdatesAutomatically, true)
             expectEqual(settings.messages.count, 12)
+        }),
+        ("legacy grayness migrates to opacity without persisting legacy key", {
+            let settings = try ConfigurationStore.decode(Data(#"{"visualGrayness":0.5}"#.utf8))
+            expectEqual(settings.visualOpacity, 0.8)
+            let encoded = String(decoding: try ConfigurationStore.encode(settings), as: UTF8.self)
+            expectEqual(encoded.contains("visualGrayness"), false)
+            expectEqual(try ConfigurationStore.decode(Data(#"{"visualGrayness":0.8,"visualOpacity":0.3}"#.utf8)).visualOpacity, 0.3)
+            rejects { _ = try ConfigurationStore.decode(Data(#"{"visualGrayness":2}"#.utf8)) }
+        }),
+        ("legacy built-in citations migrate but custom text survives", {
+            var settings = AppSettings()
+            settings.messages[4].text = "致虚极，守静笃。——《道德经》第十六章"
+            settings.messages[4].englishText = "Empty the mind; remain deeply still. — Dao De Jing, 16"
+            let custom = ReminderMessage(id: "custom", text: "自定义——保留出处与符号 🌿")
+            settings.messages.append(custom)
+            let migrated = try ConfigurationStore.decode(ConfigurationStore.encode(settings))
+            expectEqual(migrated.messages[4], ReminderMessage.defaults[4])
+            expectEqual(migrated.messages.last, custom)
+        }),
+        ("shortcut settings round trip and reject duplicate or unmodified keys", {
+            var settings = AppSettings()
+            expectEqual(settings.pauseShortcut, nil)
+            expectEqual(settings.launchAtLogin, false)
+            settings.launchAtLogin = true
+            settings.pauseShortcut = KeyboardShortcut(keyCode: 35, modifiers: 4096 | 2048)
+            settings.restartShortcut = KeyboardShortcut(keyCode: 15, modifiers: 4096 | 2048)
+            settings.restNowShortcut = KeyboardShortcut(keyCode: 11, modifiers: 4096 | 2048)
+            expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
+            settings.restNowShortcut = settings.pauseShortcut
+            rejects { try settings.validate() }
+            for key in [KeyboardShortcut(keyCode: 35, modifiers: 0), KeyboardShortcut(keyCode: 35, modifiers: 512),
+                        KeyboardShortcut(keyCode: 53, modifiers: 256), KeyboardShortcut(keyCode: 200, modifiers: 256),
+                        KeyboardShortcut(keyCode: 55, modifiers: 256), KeyboardShortcut(keyCode: 35, modifiers: 1)] {
+                rejects { try key.validate() }
+            }
+        }),
+        ("failed integration validation preserves external config", {
+            try withStore { store in
+                let initial = try store.load()
+                var external = initial
+                external.launchAtLogin = true
+                try ConfigurationStore.encode(external).write(to: store.fileURL, options: .atomic)
+                rejects { _ = try store.reload(validate: { _ in throw ConfigurationError.invalid("integration conflict") }) }
+                rejects { try store.save(initial) }
+                expectEqual(try store.reload(force: true), external)
+            }
         }),
         ("new default plan reaches long break after two focus sessions", {
             let settings = AppSettings()
@@ -94,7 +140,7 @@ func configurationChecks() -> [(String, () -> Void)] {
             settings.soundName = "Ping"
             settings.soundPath = "sounds/提醒 🎵.wav"
             settings.volume = 0.23
-            settings.visualGrayness = 0.72
+            settings.visualOpacity = 0.72
             settings.checkForUpdatesAutomatically = false
             settings.mediaPath = "media/休息.gif"
             settings.visualID = "waves"
@@ -129,7 +175,7 @@ func configurationChecks() -> [(String, () -> Void)] {
         ("invalid configuration types and unknown keys rejected", {
             for json in [#"{"workMinutes":"25"}"#, #"{"workMinute":25}"#,
                          #"{"language":"fr"}"#, #"{"schemaVersion":99}"#,
-                         #"{"cycles":0}"#, #"{"visualGrayness":1.01}"#, #"{"visualGrayness":-0.1}"#, #"{"checkForUpdatesAutomatically":"true"}"#, #"{"volume":2}"#, #"{"mediaPath":"https://example.com/a.gif"}"#] {
+                         #"{"cycles":0}"#, #"{"visualOpacity":1.01}"#, #"{"visualOpacity":-0.1}"#, #"{"checkForUpdatesAutomatically":"true"}"#, #"{"volume":2}"#, #"{"mediaPath":"https://example.com/a.gif"}"#] {
                 rejects { _ = try ConfigurationStore.decode(Data(json.utf8)) }
             }
         }),

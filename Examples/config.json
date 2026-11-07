@@ -36,48 +36,52 @@
     },
     {
       "id": "stillness",
-      "text": "致虚极，守静笃。——《道德经》第十六章",
-      "englishText": "Empty the mind; remain deeply still. — Dao De Jing, 16"
+      "text": "致虚极，守静笃。",
+      "englishText": "Empty the mind; remain deeply still."
     },
     {
       "id": "water",
-      "text": "上善若水。——《道德经》第八章",
-      "englishText": "The highest goodness is like water. — Dao De Jing, 8"
+      "text": "上善若水。",
+      "englishText": "The highest goodness is like water."
     },
     {
       "id": "journey",
-      "text": "千里之行，始于足下。——《道德经》第六十四章",
-      "englishText": "A journey of a thousand miles begins beneath your feet. — Dao De Jing, 64"
+      "text": "千里之行，始于足下。",
+      "englishText": "A journey of a thousand miles begins beneath your feet."
     },
     {
       "id": "balance",
-      "text": "文武之道，一张一弛。——《礼记·杂记下》",
-      "englishText": "The way of balance is to alternate tension and relaxation. — Book of Rites"
+      "text": "文武之道，一张一弛。",
+      "englishText": "The way of balance is to alternate tension and relaxation."
     },
     {
       "id": "joy",
-      "text": "知之者不如好之者，好之者不如乐之者。——《论语·雍也》",
-      "englishText": "Knowing is less than loving; loving is less than finding joy. — Analects, Yong Ye"
+      "text": "知之者不如好之者，好之者不如乐之者。",
+      "englishText": "Knowing is less than loving; loving is less than finding joy."
     },
     {
       "id": "nature",
-      "text": "人法地，地法天，天法道，道法自然。——《道德经》第二十五章",
-      "englishText": "Human follows earth, earth follows heaven, heaven follows the Way, and the Way follows nature. — Dao De Jing, 25"
+      "text": "人法地，地法天，天法道，道法自然。",
+      "englishText": "Human follows earth, earth follows heaven, heaven follows the Way, and the Way follows nature."
     },
     {
       "id": "learn",
-      "text": "三人行，必有我师焉。——《论语·述而》",
-      "englishText": "Among any three people walking together, there is someone I can learn from. — Analects, Shu Er"
+      "text": "三人行，必有我师焉。",
+      "englishText": "Among any three people walking together, there is someone I can learn from."
     },
     {
       "id": "flow",
-      "text": "逝者如斯夫，不舍昼夜。——《论语·子罕》",
-      "englishText": "It flows on like this, never ceasing day or night. — Analects, Zi Han"
+      "text": "逝者如斯夫，不舍昼夜。",
+      "englishText": "It flows on like this, never ceasing day or night."
     }
   ],
   "shortMessageID": "eyes",
   "longMessageID": "stretch",
   "visualID": "rings",
-  "visualGrayness": 0,
-  "checkForUpdatesAutomatically": true
+  "checkForUpdatesAutomatically": true,
+  "visualOpacity": 1,
+  "launchAtLogin": false,
+  "pauseShortcut": null,
+  "restartShortcut": null,
+  "restNowShortcut": null
 }

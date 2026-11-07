@@ -14,3 +14,5 @@ jobs:
         run: ./scripts/test.sh
       - name: Build and verify app
         run: ./scripts/build-app.sh
+      - name: Check native shortcut registration and event dispatch
+        run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-system-integration

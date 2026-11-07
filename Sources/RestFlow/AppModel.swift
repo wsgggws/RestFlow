@@ -8,10 +8,19 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings {
         didSet {
             if !applyingFile {
+                let loginWasEnabled = loginItem.status == .enabled || loginItem.status == .requiresApproval
+                var changedLoginItem = false
                 do {
+                    try shortcuts.apply(settings)
+                    if settings.launchAtLogin != oldValue.launchAtLogin {
+                        try loginItem.apply(enabled: settings.launchAtLogin)
+                        changedLoginItem = true
+                    }
                     try configuration.save(settings)
                     configurationError = nil
                 } catch {
+                    try? shortcuts.apply(oldValue)
+                    if changedLoginItem { try? loginItem.apply(enabled: loginWasEnabled) }
                     settings = oldValue
                     configurationError = error.localizedDescription
                 }
@@ -40,6 +49,8 @@ final class AppModel: ObservableObject {
     @Published var mediaError: String?
     @Published var soundError: String?
     @Published private(set) var mediaIsValid = true
+    let shortcuts = ShortcutController()
+    let loginItem = LoginItemController()
     let feedback = FeedbackService()
     let configuration: ConfigurationStore
     var onPhaseChange: (() -> Void)?
@@ -54,12 +65,13 @@ final class AppModel: ObservableObject {
 
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
-    init() {
-        let configuration = ConfigurationStore()
+    init(directory: URL? = nil) {
+        let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
         self.configuration = configuration
+        MediaStore.configurationDirectory = configuration.directory
         let loaded: AppSettings
         var errorMessage: String?
-        do { loaded = try configuration.load(orCreate: SettingsMigration.legacySettings()) }
+        do { loaded = try configuration.load(orCreate: directory == nil ? SettingsMigration.legacySettings() : AppSettings()) }
         catch {
             loaded = AppSettings()
             errorMessage = error.localizedDescription
@@ -70,6 +82,10 @@ final class AppModel: ObservableObject {
         phase = engine.phase
         remaining = loaded.plan.workDuration
         configurationError = errorMessage
+        do {
+            try shortcuts.apply(loaded)
+            if directory == nil && loaded.launchAtLogin { try loginItem.apply(enabled: true) }
+        } catch { configurationError = error.localizedDescription }
         if errorMessage != nil {
             engine.pause(at: ProcessInfo.processInfo.systemUptime)
             isPaused = true
@@ -90,7 +106,7 @@ final class AppModel: ObservableObject {
     func text(_ chinese: String, _ english: String) -> String { settings.language.text(chinese, english) }
     var phaseTitle: String {
         switch phase {
-        case .work: return text("专注工作", "Focus")
+        case .work: return text("专注", "Focus")
         case .shortBreak: return text("短休息", "Short break")
         case .longBreak: return text("长休息", "Long break")
         }
@@ -126,6 +142,7 @@ final class AppModel: ObservableObject {
         workspaceObservers.removeAll()
         feedback.stop()
         feedback.clearNotification()
+        shortcuts.stop()
     }
 
     func refresh() {
@@ -180,7 +197,13 @@ final class AppModel: ObservableObject {
 
     func reloadConfiguration(force: Bool = false) {
         do {
-            guard let loaded = try configuration.reload(force: force) else { return }
+            guard let loaded = try configuration.reload(force: force, validate: { loaded in
+                try shortcuts.apply(loaded)
+                if loaded.launchAtLogin != settings.launchAtLogin {
+                    do { try loginItem.apply(enabled: loaded.launchAtLogin) }
+                    catch { try? shortcuts.apply(settings); throw error }
+                }
+            }) else { return }
             applyingFile = true
             settings = loaded
             applyingFile = false

@@ -1,12 +1,16 @@
 import AppKit
 import SwiftUI
 import UserNotifications
+import RestFlowCore
 
 @main
 enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-system-integration") {
+            exit(SystemIntegrationChecks.run())
+        }
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(CommandLine.arguments.contains("--ui-test") ? .regular : .accessory)
@@ -18,7 +22,6 @@ enum RestFlowApp {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private var model: AppModel!
     private let updates = UpdateChecker()
-    private var updateMenuItem: NSMenuItem?
     private var lastShowsTime: Bool?
     private var lastStatusTitle: String?
     private var breakWindows: BreakWindowController!
@@ -27,10 +30,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var screenObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        model = AppModel()
+        let args = CommandLine.arguments
+        let configDirectory = args.firstIndex(of: "--config-dir").flatMap { $0 + 1 < args.count ? URL(fileURLWithPath: args[$0 + 1], isDirectory: true) : nil }
+        model = AppModel(directory: configDirectory)
         breakWindows = BreakWindowController(model: model)
+        model.shortcuts.perform = { [weak self] action in
+            switch action {
+            case .pause: self?.togglePause()
+            case .restart: self?.restart()
+            case .restNow: self?.restNow()
+            }
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let icon = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { _ in
+        let icon = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { _ in
+            NSAffineTransform.transformForIcon().concat()
             NSColor.black.setFill()
             let leaf = NSBezierPath()
             leaf.move(to: NSPoint(x: 2, y: 3))
@@ -61,10 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.settingsWindow?.title = self.model.text("RestFlow 设置", "RestFlow Settings")
             self.breakWindows.updateTitles()
             self.refreshStatus()
-            self.refreshUpdateMenu()
             self.updates.checkAutomaticallyIfNeeded(enabled: self.model.settings.checkForUpdatesAutomatically)
         }
-        updates.onChange = { [weak self] in self?.refreshUpdateMenu() }
         UNUserNotificationCenter.current().delegate = self
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -79,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         UserDefaults.standard.set(true, forKey: "hasLaunched")
         if CommandLine.arguments.contains("--preview") { breakWindows.preview() }
+
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -105,12 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         if lastShowsTime != showsTime {
             statusItem.button?.imagePosition = showsTime ? .imageLeading : .imageOnly
-            statusItem.length = showsTime ? NSStatusItem.variableLength : 18
+            statusItem.length = showsTime ? NSStatusItem.variableLength : 16
             lastShowsTime = showsTime
             if CommandLine.arguments.contains("--diagnostics") {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, let button = self.statusItem.button else { return }
-                    print("RestFlow menu: showTime=\(showsTime), width=\(button.frame.width)pt, icon=14pt")
+                    print("RestFlow menu: showTime=\(showsTime), width=\(button.frame.width)pt, icon=12pt")
                     fflush(stdout)
                 }
             }
@@ -122,22 +134,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func menuWillOpen(_ menu: NSMenu) {
         updates.checkAutomaticallyIfNeeded(enabled: model.settings.checkForUpdatesAutomatically)
         menu.removeAllItems()
-        let version = NSMenuItem(title: "RestFlow \(updates.currentVersion)", action: nil, keyEquivalent: "")
-        version.isEnabled = false
-        menu.addItem(version)
-        let update = NSMenuItem(title: updates.status(in: model.settings.language), action: #selector(checkOrOpenUpdate), keyEquivalent: "")
-        update.target = self
-        menu.addItem(update)
-        updateMenuItem = update
-        refreshUpdateMenu()
-        menu.addItem(.separator())
-        let summary = NSMenuItem(title: "\(model.phaseTitle) · \(model.timeText)", action: nil, keyEquivalent: "")
-        summary.isEnabled = false
-        menu.addItem(summary)
-        menu.addItem(.separator())
         addItem(model.isPaused ? model.text("继续计时", "Resume timer") : model.text("暂停计时", "Pause timer"),
-                action: #selector(togglePause), to: menu)
-        addItem(model.text("重新开始", "Restart"), action: #selector(restart), to: menu)
+                action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
+        addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
+        addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
         if model.phase.isBreak { addItem(model.text("提前结束休息", "End break"), action: #selector(endBreak), to: menu) }
         menu.addItem(.separator())
         addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
@@ -145,23 +145,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         addItem(model.text("退出 RestFlow", "Quit RestFlow"), action: #selector(quit), to: menu)
     }
 
-    private func refreshUpdateMenu() {
-        updateMenuItem?.title = updates.status(in: model.settings.language)
-        if case .checking = updates.state { updateMenuItem?.isEnabled = false }
-        else { updateMenuItem?.isEnabled = true }
-    }
-
-    @objc private func checkOrOpenUpdate() {
-        if case .available = updates.state { updates.openRelease() }
-        else { updates.check() }
-    }
-
-    private func addItem(_ title: String, action: Selector, to menu: NSMenu) {
+    private func addItem(_ title: String, action: Selector, shortcut: RestFlowCore.KeyboardShortcut? = nil, to menu: NSMenu) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        if let shortcut {
+            item.keyEquivalent = ShortcutController.keyEquivalent(shortcut)
+            item.keyEquivalentModifierMask = ShortcutController.cocoaModifiers(shortcut)
+        }
         item.target = self
         menu.addItem(item)
     }
 
+    @objc private func restNow() { breakWindows.preview() }
     @objc private func togglePause() { model.togglePause() }
     @objc private func restart() { model.restart() }
     @objc private func endBreak() { model.endBreak() }
@@ -188,5 +182,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                            willPresent notification: UNNotification,
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .list])
+    }
+}
+
+private extension NSAffineTransform {
+    static func transformForIcon() -> NSAffineTransform {
+        let transform = NSAffineTransform()
+        transform.scale(by: 12.0 / 14.0)
+        return transform
     }
 }

@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 
 enum MediaStore {
     struct ImportedMedia { let folder: String; let fileName: String }
-    static var root: URL { ConfigurationStore.defaultDirectory.appendingPathComponent("media", isDirectory: true) }
+    static var configurationDirectory = ConfigurationStore.defaultDirectory
+    static var root: URL { configurationDirectory.appendingPathComponent("media", isDirectory: true) }
 
     static func validate(_ source: URL, language: AppLanguage = .english) throws {
         func error(_ zh: String, _ en: String) -> ConfigurationError { .invalid(language.text(zh, en)) }

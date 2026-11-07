@@ -13,7 +13,11 @@
 | `schemaVersion` | `1` | 当前只支持 `1` |
 | `language` | `"zh-Hans"` | `"zh-Hans"` 或 `"en"`，立即切换界面及内置文案 |
 | `checkForUpdatesAutomatically` | `true` | 启动／打开菜单时自动检查 GitHub 最新 Release，同一进程两次自动检查至少间隔 24 小时；关闭后仍可手动检查 |
-| `visualGrayness` | `0` | `0...1`，素材灰度／淡化程度：0 为原色，1 更灰淡柔和；文字和计时不受影响，即时生效 |
+| `visualOpacity` | `1` | `0...1`，0 完全透明，1 完全显示；保留素材原色与清晰度，文字和计时不受影响 |
+| `launchAtLogin` | `false` | 开机启动的应用偏好；macOS 仍可要求用户批准 |
+| `pauseShortcut` | `null` | 暂停／继续的全局快捷键，见下文 |
+| `restartShortcut` | `null` | 重新开始的全局快捷键 |
+| `restNowShortcut` | `null` | 现在休息的全局快捷键 |
 | `showMenuBarTime` | `true` | 菜单栏是否显示时间；关闭后叶子图标与菜单保留 |
 | `workMinutes` | `25` | `1...240`，分钟 |
 | `shortBreakSeconds` | `30` | `5...1800`，秒 |
@@ -59,7 +63,7 @@
 
 ## 调试预览与快捷键
 
-菜单栏已移除预览项。设置页保留预览按钮；代码接口 `BreakWindowController.preview()` 保留。冷启动时也可使用：
+菜单栏的“现在休息”和设置页的预览按钮共用代码接口 `BreakWindowController.preview()` 保留。冷启动时也可使用：
 
 ```sh
 open dist/RestFlow.app --args --preview --paused
@@ -98,10 +102,37 @@ open dist/RestFlow.app --args --preview --paused
 
 自动化界面调试可冷启动附加 `--ui-test --settings --paused`，仅本次运行显示 Dock 图标以供系统自动化识别；正常启动保持菜单栏模式。
 
-## 版本与灰度（0.4.0）
+## 版本、透明度与迁移（0.5.0）
 
-菜单顶部显示当前版本，并提供检查更新或“可升级至 vX.Y.Z”入口，点击可升级项会打开固定仓库的 Release 页面。检查使用 `https://api.github.com/repos/wsgggws/RestFlow/releases/latest`；遇到公共 API 限流时，回退到 GitHub 官方 `releases/latest` 重定向，仅接受同仓库稳定版本的地址；无账户、无配置上传。检查失败不影响计时，不自动下载或安装。
+版本与更新入口位于设置 → 通用。点击“可升级至 vX.Y.Z”打开本仓库 Release 下载页；应用不自动下载或替换自身。检查使用公开 GitHub API，限流时回退同仓库官方 latest 重定向。
 
-设置 → 休息界面中的灰度滑块同时作用于内置视觉及自定义图片／GIF／Lottie。数值越高，颜色越灰、透明度越低、边缘越柔和。外部文件修改 `visualGrayness` 同样约一秒生效。
+`visualOpacity` 直接控制素材图层的不透明度（界面名“透明度”），不再进行灰化或模糊。旧字段 `visualGrayness` 仍可读取，按旧淡化值迁移为 `1 - grayness × 0.4`；同时存在时以 `visualOpacity` 为准，GUI 保存只写新字段。旧配置中的内置文案，仅在 ID 与旧内置文本完全匹配时去除出处；自定义文本保持原样。
 
-隐藏时间时图标区域为 18 点，图案为 14 点；显示时间时去掉额外前置空格。相邻应用和系统菜单栏的公共间距仍由 macOS 管理。调试宽度可冷启动附加 `--diagnostics`，终端输出当前图标区域宽度（pt）。
+隐藏时间时图标区域为 16 点，图案为 12 点；相邻应用的公共间距由 macOS 管理。冷启动附加 `--diagnostics` 可读取实际按钮宽度。
+
+## 全局快捷键与开机启动
+
+通用设置提供三个录入按钮及各自的清除按钮。默认不绑定；录入时按目标组合，Esc 取消。至少包含 ⌘、⌃、⌥ 中的一个，允许附加 ⇧；Esc 保留给休息窗口。菜单操作右侧显示 macOS 原生修饰键。使用物理键码，字母显示跟随当前 ASCII 键盘布局。
+
+```json
+{
+  "pauseShortcut": { "keyCode": 35, "modifiers": 6144 },
+  "restartShortcut": { "keyCode": 15, "modifiers": 6144 },
+  "restNowShortcut": { "keyCode": 11, "modifiers": 6144 },
+  "launchAtLogin": false
+}
+```
+
+上例为 ⌃⌥P、⌃⌥R、⌃⌥B。`modifiers` 使用 Carbon 位掩码之和：⌘=256、⇧=512、⌥=2048、⌃=4096。推荐通过界面录入。录入和文件重载均检查重复、系统符号快捷键、常用保留组合及系统注册占用；失败保留旧绑定及原文件。macOS 不提供其他应用所有局部快捷键的完整清单，未启动应用或动态拦截器的组合无法穷举。正常全局注册不要求辅助功能权限；某些系统保留按键可能先被系统处理，无法录入时换一个组合。
+
+开机启动使用 `SMAppService.mainApp`。启用后若系统要求批准，点击出现的入口在“系统设置 → 通用 → 登录项”允许；系统批准不写入 JSON。建议将应用放在 `/Applications` 后启用，移动或删除应用可能使登录项目失效。
+
+## 独立自测
+
+`--config-dir /绝对路径` 将配置、媒体导入和声音导入放入独立目录，初次创建使用默认配置。测试时不要启用真实登录项目。示例：
+
+```sh
+dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-test --settings --paused
+```
+
+构建包的 `--check-system-integration` 检查 Carbon 注册、事件分发与冲突回滚，只读取登录项目状态，不启用或关闭登录项目。

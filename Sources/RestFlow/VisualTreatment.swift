@@ -1,13 +1,9 @@
 import SwiftUI
 
-/// Apply equally to built-in drawings and imported media, leaving text untouched.
+/// Opacity affects only the visual layer, retaining the original colors and sharpness.
 struct VisualTreatment: ViewModifier {
-    let grayness: Double
+    let opacity: Double
     func body(content: Content) -> some View {
-        content
-            .compositingGroup()
-            .saturation(1 - grayness)
-            .blur(radius: grayness * 1.2)
-            .opacity(1 - grayness * 0.4)
+        content.compositingGroup().opacity(opacity)
     }
 }

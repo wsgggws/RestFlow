@@ -11,7 +11,6 @@ struct BreakView: View {
     private let mint = Color(red: 0.63, green: 0.89, blue: 0.76)
 
     private var isLong: Bool { !isPreview && model.phase == .longBreak }
-    private var title: String { isLong ? model.text("给自己一段完整的休息", "Take a proper break.") : model.text("现在，休息一下。", "Time to take a breath.") }
     private var message: String {
         let text = model.breakContent.message(for: isLong ? .longBreak : .shortBreak, settings: model.settings)
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? model.text("放松肩膀，慢慢呼吸。", "Relax your shoulders. Take a slow breath.") : text
@@ -25,18 +24,15 @@ struct BreakView: View {
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 Circle().fill(mint.opacity(0.045)).frame(width: 750, height: 750).offset(x: 350, y: -280)
                 VStack(spacing: 22) {
-                    Label(isPreview ? model.text("休息界面预览", "Break preview") : model.phaseTitle, systemImage: "leaf")
+                    Text(isPreview ? model.text("预览", "Preview") : model.phaseTitle)
                         .font(.system(size: 13, weight: .medium)).tracking(3)
                         .foregroundStyle(mint.opacity(0.85))
                     visual
-                        .modifier(VisualTreatment(grayness: model.settings.visualGrayness))
+                        .modifier(VisualTreatment(opacity: model.settings.visualOpacity))
                         .frame(width: min(400, geometry.size.width * 0.55),
                                height: min(250, geometry.size.height * 0.29))
-                    Text(title)
-                        .font(.system(size: min(42, geometry.size.width / 19), weight: .light, design: .rounded))
-                        .foregroundStyle(.white)
                     Text(message)
-                        .font(.system(size: 18, weight: .regular))
+                        .font(.system(size: min(32, geometry.size.width / 25), weight: .light, design: .rounded))
                         .foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
                         .lineLimit(5).frame(maxWidth: 650)
                     Text(isPreview ? AppModel.formatTime(model.settings.shortBreakSeconds) : model.timeText)
@@ -47,7 +43,9 @@ struct BreakView: View {
                     }
                     HStack(spacing: 14) {
                         if isPreview {
-                            breakButton(model.text("关闭预览 · Esc", "Close preview · Esc"), symbol: "xmark") { closePreview() }
+                            Button(action: closePreview) {
+                                Text("Esc").font(.system(size: 13)).padding(12).contentShape(Rectangle())
+                            }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.7))
                         } else {
                             breakButton(model.isPaused ? model.text("继续", "Resume") : model.text("暂停", "Pause"),
                                         symbol: model.isPaused ? "play.fill" : "pause.fill") { model.togglePause() }
@@ -56,7 +54,7 @@ struct BreakView: View {
                     }.padding(.top, 4)
                 }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                VStack {
+                if !isPreview { VStack {
                     Spacer()
                     HStack {
                         Text("RESTFLOW").tracking(4)
@@ -69,7 +67,7 @@ struct BreakView: View {
                     }
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.45))
                     .padding(24)
-                }
+                } }
             }
         }
         .preferredColorScheme(.dark)

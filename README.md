@@ -2,10 +2,10 @@
 
 macOS 菜单栏休息工具。默认工作 **25 分钟**、短休息 **30 秒**、长休息 **5 分钟**；每 **2 段**工作后长休息。
 
-- 暂停、继续、重新开始；多屏同步休息，Esc 提前结束或关闭预览。
+- 暂停、继续、重新开始、现在休息；多屏同步休息，Esc 提前结束或关闭预览。
 - 12 条文案、12 款矢量场景／动画，均支持随机；可添加文案、导入 PNG / JPEG / GIF / Lottie。
-- 素材灰度滑块、中英文即时切换、可隐藏的菜单栏时间、通知及可调音量提示音。
-- 菜单显示版本，支持自动／手动检查 GitHub 新版本。
+- 素材透明度滑块、中英文即时切换、可隐藏的菜单栏时间、通知及可调音量提示音。
+- 开机启动、三个自定义全局快捷键；设置中检查 GitHub 新版本。
 
 ## 安装
 
@@ -13,10 +13,12 @@ macOS 菜单栏休息工具。默认工作 **25 分钟**、短休息 **30 秒**�
 
 ```sh
 brew tap wsgggws/restflow https://github.com/wsgggws/RestFlow.git
-brew install --cask wsgggws/restflow/restflow
+brew install --cask restflow
 ```
 
 若 Homebrew 7 提示 `untrusted tap`，先执行 `brew trust --cask wsgggws/restflow/restflow`，再安装。
+
+`wsgggws/restflow` 是 tap 名称，不能作为两段 Cask 安装名。首次 tap 后可使用上面的短命令；完整名称是 `wsgggws/restflow/restflow`。若希望首次安装省去显式仓库 URL，可另建标准命名的 `wsgggws/homebrew-restflow` 仓库来维护 Cask，但安装的完整名称仍为三段。
 
 更新：`brew update && brew upgrade --cask wsgggws/restflow/restflow`。
 
@@ -31,9 +33,11 @@ brew install --cask wsgggws/restflow/restflow
   "shortMessageID": "__random__",
   "longMessageID": "__random__",
   "visualID": "__random__",
-  "visualGrayness": 0.35
+  "visualOpacity": 0.65
 }
 ```
+
+“现在休息”和预览共用入口，Esc 或点击底部 Esc 关闭；当前计时照常保持。快捷键在通用设置中录入，默认留空，冲突会提示更换。开机启动由 macOS 登录项目管理，必要时在系统设置批准。
 
 同次休息的随机结果在各屏幕一致。时长修改从后续阶段生效，重新开始可立即应用。完整字段见 [配置说明](docs/CONFIGURATION.md) 和 [默认示例](Examples/config.json)。
 

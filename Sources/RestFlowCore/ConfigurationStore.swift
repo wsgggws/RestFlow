@@ -41,11 +41,12 @@ public final class ConfigurationStore {
         return defaults
     }
 
-    public func reload(force: Bool = false) throws -> AppSettings? {
+    public func reload(force: Bool = false, validate: (AppSettings) throws -> Void = { _ in }) throws -> AppSettings? {
         let data = try read()
         guard force || data != inspectedData else { return nil }
         inspectedData = data
         let settings = try Self.decode(data)
+        try validate(settings)
         acceptedData = data
         return settings
     }

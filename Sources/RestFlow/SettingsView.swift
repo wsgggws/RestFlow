@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import RestFlowCore
+import ServiceManagement
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
@@ -51,29 +52,40 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 10) {
                 GroupBox {
-                    VStack(spacing: 18) {
+                    VStack(spacing: 10) {
                         Picker(t("界面语言", "Interface language"), selection: $model.settings.language) {
                             Text("简体中文").tag(AppLanguage.simplifiedChinese)
                             Text("English").tag(AppLanguage.english)
                         }
                         Toggle(t("在菜单栏显示剩余时间", "Show remaining time in the menu bar"), isOn: $model.settings.showMenuBarTime)
-                    }.padding(12)
+                        Toggle(t("开机启动", "Launch at login"), isOn: $model.settings.launchAtLogin)
+                        if model.settings.launchAtLogin && model.loginItem.status == .requiresApproval {
+                            Button(t("在系统设置中允许启动", "Allow in System Settings")) { SMAppService.openSystemSettingsLoginItems() }
+                        }
+                    }.padding(8)
                 } label: { Label(t("界面", "Interface"), systemImage: "menubar.rectangle") }
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("~/.config/restflow/config.json").font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    VStack(spacing: 10) {
+                        shortcutRow(t("暂停／继续计时", "Pause / resume"), keyPath: \.pauseShortcut)
+                        shortcutRow(t("重新开始", "Restart"), keyPath: \.restartShortcut)
+                        shortcutRow(t("现在休息", "Rest now"), keyPath: \.restNowShortcut)
+                    }.padding(10)
+                } label: { Text(t("快捷键", "Keyboard shortcuts")) }
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(model.configuration.fileURL.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         HStack {
                             Button(t("编辑配置", "Edit config")) { model.openConfiguration() }
                             Button(t("在访达中显示", "Show in Finder")) { model.revealConfiguration() }
                             Spacer()
                             Button(t("重新加载", "Reload")) { model.reloadConfiguration(force: true) }
                         }
-                    }.padding(12)
+                    }.padding(8)
                 } label: { Label(t("配置文件", "Configuration file"), systemImage: "doc.text") }
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("RestFlow \(updates.currentVersion)")
                             Spacer()
@@ -83,7 +95,7 @@ struct SettingsView: View {
                             }.disabled(isCheckingUpdates)
                         }
                         Toggle(t("自动检查更新", "Check for updates automatically"), isOn: $model.settings.checkForUpdatesAutomatically)
-                    }.padding(12)
+                    }.padding(8)
                 } label: { Text(t("版本", "Version")) }
             }.padding(8)
         }
@@ -93,7 +105,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             GroupBox {
                 VStack(spacing: 18) {
-                    durationRow(t("工作时间", "Focus"), value: $model.settings.workMinutes, range: 1...240, step: 1, unit: t("分钟", "min"))
+                    durationRow(t("专注", "Focus"), value: $model.settings.workMinutes, range: 1...240, step: 1, unit: t("分钟", "min"))
                     Divider()
                     durationRow(t("短休息", "Short break"), value: $model.settings.shortBreakSeconds, range: 5...1800, step: 5, unit: t("秒", "sec"))
                     Divider()
@@ -103,7 +115,7 @@ struct SettingsView: View {
                         HStack {
                             Text(t("长休息周期", "Long-break cycle"))
                             Spacer()
-                            Text(t("每 \(model.settings.cycles) 段工作", "Every \(model.settings.cycles) sessions")).foregroundStyle(.secondary)
+                            Text(t("每 \(model.settings.cycles) 段专注", "Every \(model.settings.cycles) sessions")).foregroundStyle(.secondary)
                         }
                     }
                 }.padding(12)
@@ -146,16 +158,16 @@ struct SettingsView: View {
                             Text("PNG / JPEG / GIF / Lottie JSON").font(.caption).foregroundStyle(.secondary)
                         } else {
                             BuiltinVisualView(visual: model.breakContent.visual, language: model.settings.language)
-                                .modifier(VisualTreatment(grayness: model.settings.visualGrayness))
+                                .modifier(VisualTreatment(opacity: model.settings.visualOpacity))
                                 .frame(width: 180, height: 112).frame(maxWidth: .infinity)
                                 .background(Color(red: 0.04, green: 0.13, blue: 0.10), in: RoundedRectangle(cornerRadius: 10))
                         }
                         HStack(spacing: 10) {
-                            Text(t("灰度", "Grayness"))
-                            Slider(value: $model.settings.visualGrayness, in: 0...1)
-                                .accessibilityLabel(t("素材灰度", "Visual grayness"))
-                                .help(t("向右更灰淡、柔和", "Move right for a softer, more muted look"))
-                            Text("\(Int(model.settings.visualGrayness * 100))%")
+                            Text(t("透明度", "Opacity"))
+                            Slider(value: $model.settings.visualOpacity, in: 0...1)
+                                .accessibilityLabel(t("素材透明度", "Visual opacity"))
+                                .help(t("0% 完全透明，100% 完全显示", "0% transparent, 100% fully visible"))
+                            Text("\(Int(model.settings.visualOpacity * 100))%")
                                 .monospacedDigit().frame(width: 38, alignment: .trailing)
                         }
                         if let error = model.mediaError {
@@ -164,6 +176,18 @@ struct SettingsView: View {
                     }.padding(10)
                 } label: { Text(t("图片与动画", "Images & animation")) }
             }.padding(12)
+        }
+    }
+
+    private func shortcutRow(_ title: String, keyPath: WritableKeyPath<AppSettings, RestFlowCore.KeyboardShortcut?>) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            ShortcutRecorder(model: model, keyPath: keyPath).frame(width: 220, height: 26)
+            Button { model.settings[keyPath: keyPath] = nil } label: { Image(systemName: "xmark.circle") }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .help(t("清除快捷键", "Clear shortcut"))
+                .disabled(model.settings[keyPath: keyPath] == nil)
         }
     }
 
