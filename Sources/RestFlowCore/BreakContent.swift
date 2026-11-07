@@ -3,6 +3,7 @@ import Foundation
 public enum BuiltinVisual: String, CaseIterable, Codable, Sendable {
     case rings, orbit, waves, rain, sunrise, mountains, forest, lotus, stars, clouds, bamboo, fireflies
     public static let randomID = "__random__"
+    public static let noneID = "__none__"
 
     public func title(in language: AppLanguage) -> String {
         switch self {

@@ -25,6 +25,7 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
     }
 
     public static let randomID = "__random__"
+    public static let noneID = "__none__"
 
     public static let defaults: [ReminderMessage] = [
         .init(id: "eyes", text: "看向远方，让眼睛休息一下。", englishText: "Look into the distance. Give your eyes a rest."),
@@ -43,6 +44,7 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct AppSettings: Codable, Equatable, Sendable {
+    public static let noSoundID = "__none__"
     public var schemaVersion = 1
     public var language: AppLanguage = .simplifiedChinese
     public var showMenuBarTime = true
@@ -81,6 +83,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return messages.first(where: { $0.id == (id == ReminderMessage.randomID ? resolvedID : id) })?.displayText(in: language) ?? ""
     }
 
+    public var hasVisual: Bool { mediaPath != nil || visualID != BuiltinVisual.noneID }
+
+    /// A silent break still runs through the normal cycle, without windows or keyboard capture.
+    public func showsBreakScreen(for phase: SessionPhase) -> Bool {
+        guard phase.isBreak else { return false }
+        let messageID = phase == .longBreak ? longMessageID : shortMessageID
+        return hasVisual || messageID != ReminderMessage.noneID
+    }
+
+    public var hasSound: Bool {
+        soundEnabled && volume > 0 && (soundPath != nil || soundName != Self.noSoundID)
+    }
+
+    public func shouldPrealert(for phase: SessionPhase) -> Bool {
+        phase.isBreak && prealertEnabled && (showsBreakScreen(for: phase) || hasSound)
+    }
+
     public func validate() throws {
         func check(_ condition: Bool, _ message: String) throws {
             if !condition { throw ConfigurationError.invalid(message) }
@@ -106,7 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try check((1...100).contains(messages.count), "messages must contain 1...100 entries")
         try check(Set(messages.map(\.id)).count == messages.count, "message IDs must be unique")
         for message in messages {
-            try check(!message.id.isEmpty && message.id != ReminderMessage.randomID && message.id.count <= 100, "message ID must contain 1...100 characters")
+            try check(!message.id.isEmpty && ![ReminderMessage.randomID, ReminderMessage.noneID].contains(message.id) && message.id.count <= 100, "message ID must contain 1...100 characters and cannot be reserved")
             try check(!message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && message.text.count <= 2000,
                       "message text must contain 1...2000 characters")
             if let englishText = message.englishText {
@@ -114,9 +133,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                           "englishText must contain 1...2000 characters")
             }
         }
-        try check(shortMessageID == ReminderMessage.randomID || messages.contains(where: { $0.id == shortMessageID }), "shortMessageID must refer to a message")
-        try check(longMessageID == ReminderMessage.randomID || messages.contains(where: { $0.id == longMessageID }), "longMessageID must refer to a message")
-        try check(visualID == BuiltinVisual.randomID || BuiltinVisual(rawValue: visualID) != nil, "visualID must name a built-in visual or __random__")
+        try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(shortMessageID) || messages.contains(where: { $0.id == shortMessageID }), "shortMessageID must refer to a message, __random__ or __none__")
+        try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(longMessageID) || messages.contains(where: { $0.id == longMessageID }), "longMessageID must refer to a message, __random__ or __none__")
+        try check([BuiltinVisual.randomID, BuiltinVisual.noneID].contains(visualID) || BuiltinVisual(rawValue: visualID) != nil, "visualID must name a built-in visual, __random__ or __none__")
         for path in [mediaPath, soundPath].compactMap({ $0 }) {
             try check(!path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !path.contains("\0"),
                       "file paths must be nonempty local paths")

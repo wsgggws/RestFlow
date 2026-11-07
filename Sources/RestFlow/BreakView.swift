@@ -11,8 +11,7 @@ struct BreakView: View {
 
     private var isLong: Bool { model.phase == .longBreak }
     private var message: String {
-        let text = model.breakContent.message(for: isLong ? .longBreak : .shortBreak, settings: model.settings)
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? model.text("放松肩膀，慢慢呼吸。", "Relax your shoulders. Take a slow breath.") : text
+        model.breakContent.message(for: isLong ? .longBreak : .shortBreak, settings: model.settings)
     }
 
     var body: some View {
@@ -25,14 +24,18 @@ struct BreakView: View {
                     Circle().fill(mint.opacity(0.045)).frame(width: 750, height: 750).offset(x: 350, y: -280)
                 }.modifier(VisualTreatment(transparency: model.settings.breakTransparency))
                 VStack(spacing: 22) {
-                    visual
-                        .modifier(VisualTreatment(transparency: model.settings.breakTransparency))
-                        .frame(width: min(400, geometry.size.width * 0.55),
-                               height: min(250, geometry.size.height * 0.29))
-                    Text(message)
-                        .font(.system(size: min(32, geometry.size.width / 25), weight: .light, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
-                        .lineLimit(5).frame(maxWidth: 650)
+                    if model.settings.hasVisual {
+                        visual
+                            .modifier(VisualTreatment(transparency: model.settings.breakTransparency))
+                            .frame(width: min(400, geometry.size.width * 0.55),
+                                   height: min(250, geometry.size.height * 0.29))
+                    }
+                    if !message.isEmpty {
+                        Text(message)
+                            .font(.system(size: min(32, geometry.size.width / 25), weight: .light, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
+                            .lineLimit(5).frame(maxWidth: 650)
+                    }
                     Text(model.timeText)
                         .font(.system(size: 56, weight: .ultraLight, design: .rounded))
                         .monospacedDigit().foregroundStyle(mint)
@@ -51,18 +54,6 @@ struct BreakView: View {
                 }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .shadow(color: .black.opacity(model.settings.breakTransparency * 0.9), radius: 3, x: 0, y: 1)
 
-                if !compact { VStack {
-                    Spacer()
-                    HStack {
-                        Text("RESTFLOW").tracking(4)
-                        Spacer()
-                        Button(model.text("重新开始", "Restart")) { model.restart() }.buttonStyle(.plain)
-                        Text("·")
-                        Button(model.text("退出", "Quit")) { NSApplication.shared.terminate(nil) }.buttonStyle(.plain)
-                    }
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.45))
-                    .padding(24)
-                } }
             }
         }
         .preferredColorScheme(.dark)

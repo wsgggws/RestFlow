@@ -113,6 +113,52 @@ func configurationChecks() -> [(String, () -> Void)] {
             try settings.validate()
             expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
         }),
+        ("none and random selections distinguish short and long break visibility", {
+            for short in [ReminderMessage.noneID, ReminderMessage.randomID, "eyes"] {
+                for long in [ReminderMessage.noneID, ReminderMessage.randomID, "stretch"] {
+                    for visual in [BuiltinVisual.noneID, BuiltinVisual.randomID, "rings"] {
+                        var settings = AppSettings()
+                        settings.shortMessageID = short
+                        settings.longMessageID = long
+                        settings.visualID = visual
+                        let decoded = try ConfigurationStore.decode(ConfigurationStore.encode(settings))
+                        expectEqual(decoded, settings)
+                        let content = BreakContent(settings: decoded, choose: { $0.first! })
+                        expectEqual(decoded.showsBreakScreen(for: .work), false)
+                        for (phase, messageID) in [(SessionPhase.shortBreak, short), (.longBreak, long)] {
+                            expectEqual(decoded.showsBreakScreen(for: phase), visual != BuiltinVisual.noneID || messageID != ReminderMessage.noneID)
+                            expectEqual(content.message(for: phase, settings: decoded).isEmpty, messageID == ReminderMessage.noneID)
+                        }
+                    }
+                }
+            }
+            var settings = AppSettings()
+            settings.shortMessageID = ReminderMessage.noneID
+            settings.visualID = BuiltinVisual.noneID
+            settings.mediaPath = "media/custom.gif"
+            expectEqual(settings.hasVisual, true)
+            expectEqual(settings.showsBreakScreen(for: .shortBreak), true)
+            settings.messages[0].id = ReminderMessage.noneID
+            rejects { try settings.validate() }
+        }),
+        ("none sound and disabled sound stay silent with custom sound precedence", {
+            var settings = AppSettings()
+            settings.soundName = AppSettings.noSoundID
+            expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
+            expectEqual(settings.hasSound, false)
+            settings.shortMessageID = ReminderMessage.noneID
+            settings.visualID = BuiltinVisual.noneID
+            expectEqual(settings.shouldPrealert(for: .shortBreak), false)
+            expectEqual(settings.shouldPrealert(for: .longBreak), true)
+            settings.soundPath = "sounds/custom.wav"
+            expectEqual(settings.hasSound, true)
+            expectEqual(settings.shouldPrealert(for: .shortBreak), true)
+            settings.soundEnabled = false
+            expectEqual(settings.hasSound, false)
+            settings.soundEnabled = true
+            settings.volume = 0
+            expectEqual(settings.hasSound, false)
+        }),
         ("visual catalog validation and legacy media paths", {
             expectEqual(BuiltinVisual.allCases.count, 12)
             for visual in BuiltinVisual.allCases {

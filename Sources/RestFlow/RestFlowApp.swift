@@ -15,6 +15,10 @@ enum RestFlowApp {
             app.setActivationPolicy(.accessory)
             exit(BreakIntegrationChecks.run())
         }
+        if CommandLine.arguments.contains("--check-menu-integration") {
+            app.setActivationPolicy(.accessory)
+            exit(AppDelegate.checkMenuIntegration())
+        }
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(CommandLine.arguments.contains("--ui-test") ? .regular : .accessory)
@@ -31,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var breakWindows: BreakWindowController!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var phaseMenuItem: NSMenuItem?
     private var screenObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -63,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             guard let self else { return }
             self.settingsWindow?.title = self.model.text("RestFlow 设置", "RestFlow Settings")
             self.breakWindows.updateTitles()
+            self.breakWindows.reconcilePresentation()
             self.refreshStatus()
             self.updates.checkAutomaticallyIfNeeded(enabled: self.model.settings.checkForUpdatesAutomatically)
         }
@@ -117,13 +123,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 }
             }
         }
-        statusItem.button?.toolTip = "RestFlow · \(model.phaseTitle) · \(model.timeText)" +
-            (model.isPaused ? model.text(" · 已暂停", " · Paused") : "")
+        // A changing tooltip can linger at the pointer; keep the countdown in the menu instead.
+        statusItem.button?.toolTip = nil
+        phaseMenuItem?.title = model.menuStatusText
+        statusItem.button?.setAccessibilityValue(model.menuStatusText)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
         updates.checkAutomaticallyIfNeeded(enabled: model.settings.checkForUpdatesAutomatically)
         menu.removeAllItems()
+        let phaseItem = NSMenuItem(title: model.menuStatusText, action: nil, keyEquivalent: "")
+        phaseItem.isEnabled = false
+        menu.addItem(phaseItem)
+        phaseMenuItem = phaseItem
+        menu.addItem(.separator())
         addItem(model.isPaused ? model.text("继续计时", "Resume timer") : model.text("暂停计时", "Pause timer"),
                 action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
         addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
@@ -172,5 +185,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                            willPresent notification: UNNotification,
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .list])
+    }
+
+    /// Exercise the same status refresh path used by the running app, with isolated preferences.
+    static func checkMenuIntegration() -> Int32 {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-menu-check-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var settings = AppSettings()
+        settings.soundEnabled = false
+        settings.checkForUpdatesAutomatically = false
+        _ = try? ConfigurationStore(directory: directory).load(orCreate: settings)
+        var now: TimeInterval = 100
+        let delegate = AppDelegate()
+        delegate.model = AppModel(directory: directory, clock: { now })
+        delegate.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        defer {
+            delegate.model.stop()
+            NSStatusBar.system.removeStatusItem(delegate.statusItem)
+        }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        delegate.statusItem.menu = menu
+        delegate.model.onRefresh = { delegate.refreshStatus() }
+        var failures = 0
+        func check(_ condition: Bool, _ label: String) {
+            print("\(condition ? "PASS" : "FAIL") \(label)")
+            if !condition { failures += 1 }
+        }
+        delegate.refreshStatus()
+        check(delegate.statusItem.button?.toolTip == nil, "status refresh never creates a floating countdown tooltip")
+        delegate.menuWillOpen(menu)
+        check(menu.items.first?.title == "专注：25:00", "menu shows focus countdown")
+        now += 1
+        delegate.model.refresh()
+        check(menu.items.first?.title == "专注：24:59", "open menu countdown refreshes with the timer")
+        delegate.model.settings.showMenuBarTime = false
+        check(delegate.statusItem.button?.title == "" && menu.items.first?.title == "专注：24:59", "hidden menu-bar time leaves menu countdown visible")
+        delegate.model.startShortBreak()
+        check(menu.items.first?.title == "休息：00:30", "menu shows rest countdown")
+        delegate.model.settings.language = .english
+        delegate.menuWillOpen(menu)
+        check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")
+        check(delegate.statusItem.button?.toolTip == nil, "tooltip remains absent after phase and language changes")
+        return failures == 0 ? 0 : 1
     }
 }

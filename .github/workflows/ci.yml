@@ -18,3 +18,5 @@ jobs:
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-system-integration
       - name: Check break countdown, transparency and Esc after focus loss
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-break-integration
+      - name: Check status menu countdown and tooltip regression
+        run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-menu-integration

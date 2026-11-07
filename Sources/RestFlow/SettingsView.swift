@@ -143,6 +143,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Picker(t("素材", "Visual"), selection: visualSelection) {
+                                Text(t("无", "None")).tag(BuiltinVisual.noneID)
                                 Text(t("随机", "Random")).tag(BuiltinVisual.randomID)
                                 ForEach(BuiltinVisual.allCases, id: \.rawValue) { visual in
                                     Text(visual.title(in: model.settings.language)).tag(visual.rawValue)
@@ -156,7 +157,7 @@ struct SettingsView: View {
                         if let path = model.settings.mediaPath {
                             Text(model.mediaURL?.lastPathComponent ?? path).font(.caption).lineLimit(1)
                             Text("PNG / JPEG / GIF / Lottie JSON").font(.caption).foregroundStyle(.secondary)
-                        } else {
+                        } else if model.settings.hasVisual {
                             BuiltinVisualView(visual: model.breakContent.visual, language: model.settings.language)
                                 .modifier(VisualTreatment(transparency: model.settings.breakTransparency))
                                 .frame(width: 180, height: 112).frame(maxWidth: .infinity)
@@ -221,11 +222,21 @@ struct SettingsView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
                         Toggle(t("播放提示音", "Play sounds"), isOn: $model.settings.soundEnabled)
-                        Picker(t("系统提示音", "System sound"), selection: $model.settings.soundName) {
+                        Picker(t("系统提示音", "System sound"), selection: Binding(
+                            get: { model.settings.soundPath == nil ? model.settings.soundName : "__custom__" },
+                            set: { value in
+                                guard value != "__custom__" else { return }
+                                var settings = model.settings
+                                settings.soundName = value
+                                settings.soundPath = nil
+                                model.settings = settings
+                            })) {
+                            Text(t("无", "None")).tag(AppSettings.noSoundID)
                             ForEach(["Glass", "Tink", "Ping", "Purr", "Pop", "Blow"], id: \.self) { Text($0).tag($0) }
-                        }.disabled(!model.settings.soundEnabled || model.settings.soundPath != nil)
+                            if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
+                        }.disabled(!model.settings.soundEnabled)
                         HStack {
-                            Text(model.settings.soundPath ?? t("使用系统提示音", "Using system sound"))
+                            Text(model.settings.soundPath ?? (model.settings.soundName == AppSettings.noSoundID ? t("无", "None") : t("使用系统提示音", "Using system sound")))
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
                             Spacer()
                             Button(t("导入声音…", "Import sound…")) { model.importSound() }
@@ -237,7 +248,7 @@ struct SettingsView: View {
                             Image(systemName: "speaker.fill")
                             Slider(value: $model.settings.volume, in: 0...1).accessibilityLabel(t("提示音音量", "Sound volume"))
                             Text("\(Int(model.settings.volume * 100))%").monospacedDigit().frame(width: 42, alignment: .trailing)
-                            Button(t("试听", "Test sound")) { model.playSound() }
+                            Button(t("试听", "Test sound")) { model.playSound() }.disabled(!model.settings.hasSound)
                         }.disabled(!model.settings.soundEnabled)
                         if let error = model.soundError {
                             Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
@@ -250,6 +261,7 @@ struct SettingsView: View {
 
     private func messagePicker(_ title: String, selection: Binding<String>) -> some View {
         Picker(title, selection: selection) {
+            Text(t("无", "None")).tag(ReminderMessage.noneID)
             Text(t("随机", "Random")).tag(ReminderMessage.randomID)
             ForEach(model.settings.messages) { message in
                 Text(message.displayText(in: model.settings.language).replacingOccurrences(of: "\n", with: " ")).lineLimit(1).tag(message.id)

@@ -116,6 +116,10 @@ final class AppModel: ObservableObject {
     }
     var mediaURL: URL? { configuration.resolve(settings.mediaPath) }
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
+    var menuStatusText: String {
+        let phase = phase.isBreak ? text("休息", "Rest") : text("专注", "Focus")
+        return phase + text("：", ": ") + timeText + (isPaused ? text(" · 已暂停", " · Paused") : "")
+    }
 
     func start() {
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -159,6 +163,8 @@ final class AppModel: ObservableObject {
         for event in events {
             switch event {
             case .warning:
+                let nextBreak: SessionPhase = completedWorkSessions + 1 >= settings.cycles ? .longBreak : .shortBreak
+                guard settings.shouldPrealert(for: nextBreak) else { continue }
                 feedback.notifyBreak(in: Int(ceil(remaining)), language: settings.language)
                 playSound()
             case .phaseChanged:
@@ -303,6 +309,10 @@ final class AppModel: ObservableObject {
     }
 
     private func validateSound() {
+        guard settings.soundPath != nil || settings.soundName != AppSettings.noSoundID else {
+            soundError = nil
+            return
+        }
         let valid: Bool
         if let url = soundURL {
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max

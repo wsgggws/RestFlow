@@ -148,6 +148,46 @@ enum BreakIntegrationChecks {
         model.restart()
         check(!NSApp.windows.contains(where: { $0.isVisible }) && NSApp.presentationOptions == previousOptions,
               "restart also removes the break input guard")
+        model.onSettingsChange = { controller.reconcilePresentation() }
+        model.settings.shortMessageID = ReminderMessage.noneID
+        model.settings.longMessageID = ReminderMessage.noneID
+        model.settings.visualID = BuiltinVisual.noneID
+        controller.preview()
+        check(model.phase == .shortBreak && !model.isPaused && !NSApp.windows.contains(where: { $0.isVisible }),
+              "all-none manual break runs without a full-screen window")
+        check(NSApp.presentationOptions == previousOptions && !model.shortcuts.isSuspended,
+              "invisible break keeps desktop and configured shortcuts available")
+        current += 1
+        model.refresh()
+        check(model.remaining == defaults.shortBreakSeconds - 1, "invisible short break still counts down")
+        model.settings.longMessageID = ReminderMessage.randomID
+        check(!NSApp.windows.contains(where: { $0.isVisible }), "random long message does not reveal an all-none short break")
+        model.settings.shortMessageID = ReminderMessage.randomID
+        check(NSApp.windows.contains(where: { $0.isVisible }) && model.shortcuts.isSuspended,
+              "random short message reveals full-screen text even with no animation")
+        model.settings.shortMessageID = ReminderMessage.noneID
+        check(!NSApp.windows.contains(where: { $0.isVisible }) && NSApp.presentationOptions == previousOptions,
+              "switching current content to none closes windows and releases keyboard capture")
+        current += defaults.shortBreakSeconds
+        model.refresh()
+        check(model.phase == .work, "invisible short break naturally returns to focus")
+        current += defaults.plan.workDuration
+        model.refresh()
+        check(model.phase == .shortBreak && !NSApp.windows.contains(where: { $0.isVisible }),
+              "natural all-none short break runs without a window")
+        current += defaults.shortBreakSeconds
+        model.refresh()
+        current += defaults.plan.workDuration
+        model.refresh()
+        check(model.phase == .longBreak && NSApp.windows.contains(where: { $0.isVisible }),
+              "natural long break shows its random message independently")
+        model.settings.longMessageID = ReminderMessage.noneID
+        check(!NSApp.windows.contains(where: { $0.isVisible }) && !model.shortcuts.isSuspended,
+              "all-none long break hides windows without interrupting its countdown")
+        current += defaults.plan.longBreakDuration
+        model.refresh()
+        check(model.phase == .work && model.completedWorkSessions == 0 && NSApp.presentationOptions == previousOptions,
+              "invisible long break finishes the regular cycle")
         return failures == 0 ? 0 : 1
     }
 }

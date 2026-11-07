@@ -35,6 +35,11 @@ final class BreakWindowController {
         windows.values.forEach { $0.title = model.text("RestFlow 休息", "RestFlow Break") }
     }
 
+    func reconcilePresentation() {
+        let shouldShow = model.settings.showsBreakScreen(for: model.phase)
+        if shouldShow != !windows.isEmpty { sync() }
+    }
+
     func close() {
         inputGuard.stop()
         model.shortcuts.isSuspended = false
@@ -48,6 +53,7 @@ final class BreakWindowController {
     }
 
     private func showAllScreens() {
+        guard model.settings.showsBreakScreen(for: model.phase) else { close(); return }
         if windows.isEmpty {
             let frontmost = NSWorkspace.shared.frontmostApplication
             if frontmost?.processIdentifier != ProcessInfo.processInfo.processIdentifier {

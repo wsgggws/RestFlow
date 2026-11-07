@@ -26,14 +26,14 @@
 | `prealertEnabled` | `true` | 开启工作结束前预告 |
 | `warningSeconds` | `15` | `3...120`，提前秒数；若比工作时长长，在阶段开始后预告 |
 | `soundEnabled` | `true` | 预告／开始／结束是否播放提示音 |
-| `soundName` | `"Glass"` | macOS 系统声音名，例如 `Glass`、`Tink`、`Ping`、`Purr`、`Pop`、`Blow` |
+| `soundName` | `"Glass"` | macOS 系统声音名，例如 `Glass`、`Tink`、`Ping`、`Purr`、`Pop`、`Blow`；`"__none__"` 不播放声音 |
 | `soundPath` | `null` | 自定义本地声音文件，优先于 `soundName`；设置为 `null` 恢复系统声音 |
 | `volume` | `0.5` | `0...1`，应用提示音音量，仍受系统音量影响 |
 | `mediaPath` | `null` | 本地 PNG/JPEG/GIF/Lottie JSON；`null` 恢复默认视觉 |
-| `visualID` | `"rings"` | 内置视觉 ID 或 `"__random__"`；`mediaPath` 有值时优先使用自定义素材 |
+| `visualID` | `"rings"` | 内置视觉 ID、`"__random__"` 或 `"__none__"`；`mediaPath` 有值时优先使用自定义素材 |
 | `messages` | 12 条内置文案 | 共用文案库，1...100 条，ID 不重复；文本长度 1...2000 字符 |
-| `shortMessageID` | `"eyes"` | 短休息使用的文案 ID，须存在于 `messages`；`__random__` 为随机 |
-| `longMessageID` | `"stretch"` | 长休息使用的文案 ID，可与短休息相同；`__random__` 为随机 |
+| `shortMessageID` | `"eyes"` | 短休息文案 ID，或 `__random__`（随机）、`__none__`（无） |
+| `longMessageID` | `"stretch"` | 长休息文案 ID，可与短休息相同；支持 `__random__`、`__none__` |
 
 `messages` 项使用 `id`、`text`，可选 `englishText`。`text` 为原文；仅当明确设置了 `englishText` 时，英文界面显示该翻译。用户在 GUI 添加的文案不自动翻译，语言切换不改变原文。
 
@@ -44,7 +44,22 @@
 }
 ```
 
-用户文案按纯文本显示，不解析 Markdown；特殊符号、表情和换行可保留。新增文案后，在短／长休息的下拉框中选择；要批量编辑或删除，可直接修改 `messages`，同时确保两个选中 ID 仍然存在（或为 `__random__`）。保留 ID `__random__` 不能用于文案条目本身。
+用户文案按纯文本显示，不解析 Markdown；特殊符号、表情和换行可保留。新增文案后，在短／长休息的下拉框中选择；要批量编辑或删除，可直接修改 `messages`，同时确保两个选中 ID 仍然存在（或为 `__random__`、`__none__`）。保留 ID `__random__`、`__none__` 不能用于文案条目本身。
+
+## 无内容与静默休息（0.7.0）
+
+当前休息类型的文案为 `__none__`，且 `visualID` 为 `__none__`、`mediaPath` 为 `null` 时，不创建全屏窗口、不显示倒计时、也不拦截键盘；计时、暂停／继续、周期和声音照常工作，菜单首行仍显示“专注／休息：剩余时间”。短／长休息分别判断，另一个阶段选择随机不会影响本阶段。
+
+| 当前文案 | 视觉 | 本次休息 |
+|---|---|---|
+| 无 | 无 | 无全屏，按配置播放声音 |
+| 随机／指定文案 | 无 | 全屏文案及倒计时 |
+| 无 | 随机／指定素材 | 全屏视觉及倒计时，不补替代文案 |
+| 随机／指定文案 | 随机／指定素材 | 全屏文案、视觉及倒计时 |
+
+`soundEnabled: false`、`volume: 0` 或声音选择 `__none__`（且没有 `soundPath`）均不播放声音。没有全屏内容且没有声音的阶段完全安静运行，也跳过该阶段之前的预告通知。有内容或声音时，预告仍遵守 `prealertEnabled`。GUI 选择素材／声音“无”时清空对应自定义路径；文件配置保留“自定义路径优先”的规则。静默设置同样适用于“现在休息”和设置预览。
+
+菜单首行每秒更新，关闭菜单栏时间显示不影响菜单内时间；暂停时附加暂停标记。菜单栏不再使用带倒计时的悬浮 tooltip。
 
 ## 相对路径
 
