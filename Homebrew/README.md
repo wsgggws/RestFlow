@@ -7,6 +7,8 @@ brew tap wsgggws/restflow https://github.com/wsgggws/RestFlow.git
 brew install --cask wsgggws/restflow/restflow
 ```
 
+若 Homebrew 7 提示 `untrusted tap`，先执行 `brew trust --cask wsgggws/restflow/restflow`，再安装。
+
 本仓库同时充当 tap，`Casks/restflow.rb` 引用版本化 GitHub Release 和 SHA-256。预编译版本支持 Apple Silicon / macOS 13+，尚未 Apple 公证，首次打开遵循 macOS 的允许打开提示。
 
 ```sh
