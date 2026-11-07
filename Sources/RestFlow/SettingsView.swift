@@ -158,16 +158,16 @@ struct SettingsView: View {
                             Text("PNG / JPEG / GIF / Lottie JSON").font(.caption).foregroundStyle(.secondary)
                         } else {
                             BuiltinVisualView(visual: model.breakContent.visual, language: model.settings.language)
-                                .modifier(VisualTreatment(opacity: model.settings.visualOpacity))
+                                .modifier(VisualTreatment(transparency: model.settings.breakTransparency))
                                 .frame(width: 180, height: 112).frame(maxWidth: .infinity)
-                                .background(Color(red: 0.04, green: 0.13, blue: 0.10), in: RoundedRectangle(cornerRadius: 10))
+                                .background(Color(red: 0.04, green: 0.13, blue: 0.10).opacity(1 - model.settings.breakTransparency), in: RoundedRectangle(cornerRadius: 10))
                         }
                         HStack(spacing: 10) {
-                            Text(t("透明度", "Opacity"))
-                            Slider(value: $model.settings.visualOpacity, in: 0...1)
-                                .accessibilityLabel(t("素材透明度", "Visual opacity"))
-                                .help(t("0% 完全透明，100% 完全显示", "0% transparent, 100% fully visible"))
-                            Text("\(Int(model.settings.visualOpacity * 100))%")
+                            Text(t("背景透明度", "Background transparency"))
+                            Slider(value: $model.settings.breakTransparency, in: 0...1)
+                                .accessibilityLabel(t("背景透明度", "Background transparency"))
+                                .help(t("0% 完全遮住桌面，100% 显示桌面；背景与动画一起变淡", "0% covers the desktop, 100% reveals it; background and artwork fade together"))
+                            Text("\(Int(model.settings.breakTransparency * 100))%")
                                 .monospacedDigit().frame(width: 38, alignment: .trailing)
                         }
                         if let error = model.mediaError {

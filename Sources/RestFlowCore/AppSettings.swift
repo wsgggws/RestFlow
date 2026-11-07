@@ -47,7 +47,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var language: AppLanguage = .simplifiedChinese
     public var showMenuBarTime = true
     public var checkForUpdatesAutomatically = true
-    public var visualOpacity: Double = 1
+    public var breakTransparency: Double = 0
     public var launchAtLogin = false
     public var pauseShortcut: KeyboardShortcut?
     public var restartShortcut: KeyboardShortcut?
@@ -92,7 +92,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             ("longBreakMinutes", longBreakMinutes, 1.0...120.0),
             ("warningSeconds", warningSeconds, 3.0...120.0),
             ("volume", volume, 0.0...1.0),
-            ("visualOpacity", visualOpacity, 0.0...1.0),
+            ("breakTransparency", breakTransparency, 0.0...1.0),
         ] {
             try check(value.isFinite && range.contains(value), "\(name) must be within \(range)")
         }
@@ -125,7 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, visualOpacity, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
+        case schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
     }
@@ -134,7 +134,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.init()
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try decoder.container(keyedBy: AnyKey.self)
-        let known = Set(CodingKeys.allCases.map(\.rawValue) + ["visualGrayness"])
+        let known = Set(CodingKeys.allCases.map(\.rawValue) + ["visualGrayness", "visualOpacity"])
         let unknown = raw.allKeys.map(\.stringValue).filter { !known.contains($0) }
         guard unknown.isEmpty else { throw ConfigurationError.invalid("Unknown setting: \(unknown.sorted().joined(separator: ", "))") }
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
@@ -144,14 +144,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         language = try value(.language, language)
         showMenuBarTime = try value(.showMenuBarTime, showMenuBarTime)
         checkForUpdatesAutomatically = try value(.checkForUpdatesAutomatically, checkForUpdatesAutomatically)
-        if values.contains(.visualOpacity) {
-            visualOpacity = try value(.visualOpacity, visualOpacity)
-        } else if let legacyKey = AnyKey(stringValue: "visualGrayness"), raw.contains(legacyKey) {
-            let grayness = try raw.decode(Double.self, forKey: legacyKey)
-            guard grayness.isFinite && (0...1).contains(grayness) else {
-                throw ConfigurationError.invalid("visualGrayness must be within 0...1")
+        breakTransparency = try value(.breakTransparency, breakTransparency)
+        // Legacy controls affected only the artwork; a new desktop-covering setting starts opaque.
+        for name in ["visualGrayness", "visualOpacity"] {
+            if let key = AnyKey(stringValue: name), raw.contains(key) {
+                let legacy = try raw.decode(Double.self, forKey: key)
+                guard legacy.isFinite && (0...1).contains(legacy) else {
+                    throw ConfigurationError.invalid("\(name) must be within 0...1")
+                }
             }
-            visualOpacity = 1 - grayness * 0.4
         }
         launchAtLogin = try value(.launchAtLogin, launchAtLogin)
         pauseShortcut = try values.decodeIfPresent(KeyboardShortcut.self, forKey: .pauseShortcut)

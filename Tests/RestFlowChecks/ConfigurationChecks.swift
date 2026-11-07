@@ -26,17 +26,20 @@ func configurationChecks() -> [(String, () -> Void)] {
             expectEqual(settings.language, .english)
             expectEqual(settings.showMenuBarTime, false)
             expectEqual(settings.workMinutes, 25)
-            expectEqual(settings.visualOpacity, 1)
+            expectEqual(settings.breakTransparency, 0)
             expectEqual(settings.checkForUpdatesAutomatically, true)
             expectEqual(settings.messages.count, 12)
         }),
-        ("legacy grayness migrates to opacity without persisting legacy key", {
-            let settings = try ConfigurationStore.decode(Data(#"{"visualGrayness":0.5}"#.utf8))
-            expectEqual(settings.visualOpacity, 0.8)
-            let encoded = String(decoding: try ConfigurationStore.encode(settings), as: UTF8.self)
-            expectEqual(encoded.contains("visualGrayness"), false)
-            expectEqual(try ConfigurationStore.decode(Data(#"{"visualGrayness":0.8,"visualOpacity":0.3}"#.utf8)).visualOpacity, 0.3)
-            rejects { _ = try ConfigurationStore.decode(Data(#"{"visualGrayness":2}"#.utf8)) }
+        ("legacy artwork controls reset to opaque background; new transparency wins", {
+            for field in ["visualOpacity", "visualGrayness"] {
+                let settings = try ConfigurationStore.decode(Data("{\"\(field)\":0.5}".utf8))
+                expectEqual(settings.breakTransparency, 0)
+                let encoded = String(decoding: try ConfigurationStore.encode(settings), as: UTF8.self)
+                expectEqual(encoded.contains(field), false)
+                let modern = try ConfigurationStore.decode(Data("{\"\(field)\":0.8,\"breakTransparency\":0.3}".utf8))
+                expectEqual(modern.breakTransparency, 0.3)
+                rejects { _ = try ConfigurationStore.decode(Data("{\"\(field)\":2}".utf8)) }
+            }
         }),
         ("legacy built-in citations migrate but custom text survives", {
             var settings = AppSettings()
@@ -140,7 +143,7 @@ func configurationChecks() -> [(String, () -> Void)] {
             settings.soundName = "Ping"
             settings.soundPath = "sounds/提醒 🎵.wav"
             settings.volume = 0.23
-            settings.visualOpacity = 0.72
+            settings.breakTransparency = 0.72
             settings.checkForUpdatesAutomatically = false
             settings.mediaPath = "media/休息.gif"
             settings.visualID = "waves"
@@ -175,7 +178,7 @@ func configurationChecks() -> [(String, () -> Void)] {
         ("invalid configuration types and unknown keys rejected", {
             for json in [#"{"workMinutes":"25"}"#, #"{"workMinute":25}"#,
                          #"{"language":"fr"}"#, #"{"schemaVersion":99}"#,
-                         #"{"cycles":0}"#, #"{"visualOpacity":1.01}"#, #"{"visualOpacity":-0.1}"#, #"{"checkForUpdatesAutomatically":"true"}"#, #"{"volume":2}"#, #"{"mediaPath":"https://example.com/a.gif"}"#] {
+                         #"{"cycles":0}"#, #"{"breakTransparency":1.01}"#, #"{"breakTransparency":-0.1}"#, #"{"checkForUpdatesAutomatically":"true"}"#, #"{"volume":2}"#, #"{"mediaPath":"https://example.com/a.gif"}"#] {
                 rejects { _ = try ConfigurationStore.decode(Data(json.utf8)) }
             }
         }),

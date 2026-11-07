@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Opacity affects only the visual layer, retaining the original colors and sharpness.
+/// Background and artwork fade together; controls remain readable at full transparency.
 struct VisualTreatment: ViewModifier {
-    let opacity: Double
+    let transparency: Double
     func body(content: Content) -> some View {
-        content.compositingGroup().opacity(opacity)
+        content.compositingGroup().opacity(1 - transparency)
     }
 }

@@ -8,11 +8,12 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings {
         didSet {
             if !applyingFile {
-                let loginWasEnabled = loginItem.status == .enabled || loginItem.status == .requiresApproval
+                let loginChanged = settings.launchAtLogin != oldValue.launchAtLogin
+                let loginWasEnabled = loginChanged && (loginItem.status == .enabled || loginItem.status == .requiresApproval)
                 var changedLoginItem = false
                 do {
                     try shortcuts.apply(settings)
-                    if settings.launchAtLogin != oldValue.launchAtLogin {
+                    if loginChanged {
                         try loginItem.apply(enabled: settings.launchAtLogin)
                         changedLoginItem = true
                     }
@@ -63,9 +64,11 @@ final class AppModel: ObservableObject {
     private var resumeAfterSleep = false
     private var workspaceObservers: [NSObjectProtocol] = []
 
-    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+    private let clock: () -> TimeInterval
+    private var now: TimeInterval { clock() }
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.clock = clock
         let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
         self.configuration = configuration
         MediaStore.configurationDirectory = configuration.directory
@@ -78,7 +81,7 @@ final class AppModel: ObservableObject {
         }
         settings = loaded
         breakContent = BreakContent(settings: loaded)
-        engine = SessionEngine(plan: loaded.plan, now: ProcessInfo.processInfo.systemUptime)
+        engine = SessionEngine(plan: loaded.plan, now: clock())
         phase = engine.phase
         remaining = loaded.plan.workDuration
         configurationError = errorMessage
@@ -87,7 +90,7 @@ final class AppModel: ObservableObject {
             if directory == nil && loaded.launchAtLogin { try loginItem.apply(enabled: true) }
         } catch { configurationError = error.localizedDescription }
         if errorMessage != nil {
-            engine.pause(at: ProcessInfo.processInfo.systemUptime)
+            engine.pause(at: clock())
             isPaused = true
         }
     }
@@ -181,6 +184,17 @@ final class AppModel: ObservableObject {
         engine.restart(at: now)
         feedback.stop()
         feedback.clearNotification()
+        publish(at: now)
+        onPhaseChange?()
+    }
+
+    func startShortBreak() {
+        guard !phase.isBreak else { return }
+        resumeAfterSleep = false
+        engine.startShortBreak(at: now)
+        prepareBreakContent()
+        feedback.clearNotification()
+        playSound()
         publish(at: now)
         onPhaseChange?()
     }

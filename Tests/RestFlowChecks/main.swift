@@ -94,6 +94,24 @@ struct SessionEngineTests {
         expectEqual(timer.tick(at: 122), [.phaseChanged(.longBreak)])
     }
 
+    func testManualRestStartsWhilePausedAndPreservesCycle() {
+        var timer = SessionEngine(plan: plan, now: 0)
+        _ = timer.tick(at: 60)
+        timer.endBreak(at: 62)
+        expectEqual(timer.completedWorkSessions, 1)
+        timer.pause(at: 65)
+        timer.startShortBreak(at: 100)
+        expectEqual(timer.phase, .shortBreak)
+        expectFalse(timer.isPaused)
+        expectEqual(timer.remaining(at: 102), 8)
+        expectEqual(timer.completedWorkSessions, 1)
+        timer.startShortBreak(at: 104)
+        expectEqual(timer.remaining(at: 104), 6)
+        expectEqual(timer.tick(at: 110), [.phaseChanged(.work)])
+        expectEqual(timer.remaining(at: 110), 60)
+        expectEqual(timer.tick(at: 170), [.phaseChanged(.longBreak)])
+    }
+
     func testOneCycleAlwaysUsesLongBreakAndZeroWarningDisablesPrealert() {
         let plan = SessionPlan(workDuration: 5, shortBreakDuration: 1,
                                longBreakDuration: 3, cycles: 1, warningSeconds: 0)
@@ -112,6 +130,7 @@ let checks: [(String, () -> Void)] = [
     ("delayed refresh", suite.testDelayedRefreshDoesNotReplayMissedCycles),
     ("settings apply to next phase", suite.testSettingsAffectNextPhaseWithoutChangingCurrentDeadline),
     ("early end preserves cycle", suite.testEarlyEndOfBreakPreservesCycleCount),
+    ("manual rest counts down from paused focus without changing cycles", suite.testManualRestStartsWhilePausedAndPreservesCycle),
     ("one-cycle plan and disabled warning", suite.testOneCycleAlwaysUsesLongBreakAndZeroWarningDisablesPrealert),
  ] + configurationChecks() + releaseChecks()
 for (name, check) in checks {

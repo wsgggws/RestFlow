@@ -5,7 +5,7 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .work: return "专注工作"
+        case .work: return "专注"
         case .shortBreak: return "短休息"
         case .longBreak: return "长休息"
         }
@@ -110,6 +110,12 @@ public struct SessionEngine: Sendable {
     public mutating func restart(at now: TimeInterval) {
         completedWorkSessions = 0
         begin(.work, at: now)
+    }
+
+    /// A manual rest starts immediately without completing or resetting a focus cycle.
+    public mutating func startShortBreak(at now: TimeInterval) {
+        guard !phase.isBreak else { return }
+        begin(.shortBreak, at: now)
     }
 
     public mutating func endBreak(at now: TimeInterval) {

@@ -5,14 +5,14 @@ import SwiftUI
 final class BreakWindowController {
     private let model: AppModel
     private var windows: [UInt32: NSWindow] = [:]
-    private var isPreview = false
+    private var compactPresentation = false
+    private let inputGuard = BreakInputGuard()
     private var previousApplication: NSRunningApplication?
 
     init(model: AppModel) { self.model = model }
 
     func sync() {
         if model.phase.isBreak {
-            isPreview = false
             showAllScreens()
         } else {
             close()
@@ -21,13 +21,13 @@ final class BreakWindowController {
 
     func preview() {
         guard !model.phase.isBreak else { showAllScreens(); return }
-        model.prepareBreakContent()
-        isPreview = true
-        showAllScreens()
+        compactPresentation = true
+        model.startShortBreak()
+        if windows.isEmpty { showAllScreens() }
     }
 
     func screensChanged() {
-        guard isPreview || model.phase.isBreak else { return }
+        guard model.phase.isBreak else { return }
         showAllScreens()
     }
 
@@ -36,11 +36,13 @@ final class BreakWindowController {
     }
 
     func close() {
+        inputGuard.stop()
+        model.shortcuts.isSuspended = false
         let hadWindows = !windows.isEmpty
         let old = windows.values
         windows.removeAll()
         old.forEach { $0.close() }
-        isPreview = false
+        compactPresentation = false
         if hadWindows { previousApplication?.activate(options: [.activateIgnoringOtherApps]) }
         previousApplication = nil
     }
@@ -66,12 +68,12 @@ final class BreakWindowController {
                 window.level = .screenSaver
                 window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 window.isReleasedWhenClosed = false
-                window.isOpaque = true
-                window.backgroundColor = NSColor(calibratedRed: 0.035, green: 0.105, blue: 0.09, alpha: 1)
+                window.isOpaque = false
+                window.backgroundColor = .clear
                 window.hidesOnDeactivate = false
                 (window as? BreakOverlayWindow)?.escapeAction = { [weak self] in
                     guard let self else { return }
-                    if self.isPreview { self.close() } else { self.model.endBreak() }
+                    self.model.endBreak()
                 }
                 windows[id] = window
             }
@@ -88,12 +90,16 @@ final class BreakWindowController {
         for id in Set(windows.keys).subtracting(activeIDs) {
             windows.removeValue(forKey: id)?.close()
         }
+        model.shortcuts.isSuspended = true
+        if !inputGuard.start(escape: { [weak self] in self?.model.endBreak() }) {
+            model.configurationError = model.text("全局 Esc 被其他应用占用；休息窗口内仍可按 Esc 或点击退出。", "Global Esc is in use by another app. Press Esc inside the break window or click Esc to exit.")
+        }
         NSApplication.shared.activate(ignoringOtherApps: true)
         windows.values.first?.makeKeyAndOrderFront(nil)
     }
 
     private func makeView() -> BreakView {
-        BreakView(model: model, isPreview: isPreview, closePreview: { [weak self] in self?.close() })
+        BreakView(model: model, compact: compactPresentation)
     }
 }
 
@@ -104,7 +110,12 @@ private final class BreakOverlayWindow: NSWindow {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { escapeAction?() }
-        else { super.keyDown(with: event) }
+        // Other keys are consumed while resting.
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 53 { escapeAction?() }
+        return true
     }
 
     override func cancelOperation(_ sender: Any?) { escapeAction?() }

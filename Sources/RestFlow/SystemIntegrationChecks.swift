@@ -69,3 +69,85 @@ enum SystemIntegrationChecks {
         } catch { print("FAIL native integration: \(error)"); return 1 }
     }
 }
+
+@MainActor
+enum BreakIntegrationChecks {
+    static func run() -> Int32 {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-break-check-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var defaults = AppSettings()
+        defaults.soundEnabled = false
+        defaults.checkForUpdatesAutomatically = false
+        _ = try? ConfigurationStore(directory: directory).load(orCreate: defaults)
+        var current: TimeInterval = 100
+        let model = AppModel(directory: directory, clock: { current })
+        let controller = BreakWindowController(model: model)
+        model.onPhaseChange = { controller.sync() }
+        let previousOptions = NSApp.presentationOptions
+        defer { controller.close(); model.stop() }
+        var failures = 0
+        func check(_ condition: Bool, _ label: String) {
+            print("\(condition ? "PASS" : "FAIL") \(label)")
+            if !condition { failures += 1 }
+        }
+        model.togglePause()
+        controller.preview()
+        check(model.phase == .shortBreak && !model.isPaused, "preview starts a running short break from paused focus")
+        check(NSApp.presentationOptions.contains(.disableProcessSwitching), "Cmd-Tab is disabled while break covers the desktop")
+        check(NSApp.windows.filter { $0.isVisible }.allSatisfy { !$0.isOpaque && $0.backgroundColor == .clear }, "break window allows desktop transparency")
+        if let host = NSApp.windows.first(where: { $0.isVisible })?.contentView {
+            func cornerAlpha() -> CGFloat {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.08))
+                host.layoutSubtreeIfNeeded()
+                host.displayIfNeeded()
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return -1 }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                return bitmap.colorAt(x: 10, y: 10)?.alphaComponent ?? -1
+            }
+            check(cornerAlpha() > 0.99, "zero transparency paints a fully opaque background")
+            model.settings.breakTransparency = 1
+            let alpha = cornerAlpha()
+            check(alpha >= 0 && alpha < 0.01, "full transparency leaves the window corner clear (alpha=\(alpha))")
+            model.settings.breakTransparency = 0.5
+            let halfAlpha = cornerAlpha()
+            check((0.45...0.55).contains(halfAlpha), "half transparency blends the background with the desktop (alpha=\(halfAlpha))")
+            model.settings.breakTransparency = 0
+        }
+        current += 1
+        model.refresh()
+        check(model.remaining == defaults.shortBreakSeconds - 1, "short break countdown advances instead of showing a static preview")
+        var competingEsc: EventHotKeyRef?
+        let occupied = RegisterEventHotKey(UInt32(kVK_Escape), 0, EventHotKeyID(signature: 0x54455354, id: 42),
+                                          GetEventDispatcherTarget(), 0, &competingEsc)
+        check(occupied != noErr, "global Esc is registered while the break is visible")
+        if let competingEsc { UnregisterEventHotKey(competingEsc) }
+        NSApp.deactivate()
+        NSApp.windows.forEach { $0.resignKey() }
+        var event: EventRef?
+        if CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0, 0, &event) == noErr, let event {
+            var id = EventHotKeyID(signature: 0x52464252, id: 1) // RFBR, temporary global Esc
+            SetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), MemoryLayout<EventHotKeyID>.size, &id)
+            SendEventToEventTarget(event, GetEventDispatcherTarget())
+            ReleaseEvent(event)
+        }
+        check(!NSApp.windows.contains(where: { $0.isVisible }), "Esc closes the break after focus is lost")
+        controller.close()
+        check(NSApp.presentationOptions == previousOptions, "closing a break restores system presentation options")
+        check(model.phase == .work && !model.isPaused && !model.shortcuts.isSuspended, "Esc resumes focus and restores configured shortcuts")
+        var releasedEsc: EventHotKeyRef?
+        let available = RegisterEventHotKey(UInt32(kVK_Escape), 0, EventHotKeyID(signature: 0x54455354, id: 43),
+                                           GetEventDispatcherTarget(), 0, &releasedEsc)
+        check(available == noErr, "global Esc is released after leaving the break")
+        if let releasedEsc { UnregisterEventHotKey(releasedEsc) }
+        controller.preview()
+        current += defaults.shortBreakSeconds + 1
+        model.refresh()
+        check(model.phase == .work && !NSApp.windows.contains(where: { $0.isVisible }) && NSApp.presentationOptions == previousOptions,
+              "natural short-break completion closes windows and restores keyboard behavior")
+        controller.preview()
+        model.restart()
+        check(!NSApp.windows.contains(where: { $0.isVisible }) && NSApp.presentationOptions == previousOptions,
+              "restart also removes the break input guard")
+        return failures == 0 ? 0 : 1
+    }
+}

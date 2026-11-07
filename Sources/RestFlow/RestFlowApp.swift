@@ -11,6 +11,10 @@ enum RestFlowApp {
         if CommandLine.arguments.contains("--check-system-integration") {
             exit(SystemIntegrationChecks.run())
         }
+        if CommandLine.arguments.contains("--check-break-integration") {
+            app.setActivationPolicy(.accessory)
+            exit(BreakIntegrationChecks.run())
+        }
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(CommandLine.arguments.contains("--ui-test") ? .regular : .accessory)
@@ -42,22 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let icon = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { _ in
-            NSAffineTransform.transformForIcon().concat()
-            NSColor.black.setFill()
-            let leaf = NSBezierPath()
-            leaf.move(to: NSPoint(x: 2, y: 3))
-            leaf.curve(to: NSPoint(x: 12, y: 12), controlPoint1: NSPoint(x: 0, y: 11), controlPoint2: NSPoint(x: 5, y: 14))
-            leaf.curve(to: NSPoint(x: 2, y: 3), controlPoint1: NSPoint(x: 14, y: 5), controlPoint2: NSPoint(x: 10, y: 1))
-            leaf.fill()
-            let stem = NSBezierPath()
-            stem.move(to: NSPoint(x: 1, y: 1))
-            stem.line(to: NSPoint(x: 9, y: 9))
-            stem.lineWidth = 1.2
-            NSColor.black.setStroke()
-            stem.stroke()
-            return true
-        }
+        let icon = NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: "RestFlow")!
+        icon.size = NSSize(width: 18, height: 18)
         icon.isTemplate = true
         statusItem.button?.image = icon
         statusItem.button?.setAccessibilityLabel("RestFlow")
@@ -117,12 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         if lastShowsTime != showsTime {
             statusItem.button?.imagePosition = showsTime ? .imageLeading : .imageOnly
-            statusItem.length = showsTime ? NSStatusItem.variableLength : 16
+            statusItem.length = showsTime ? NSStatusItem.variableLength : NSStatusItem.squareLength
             lastShowsTime = showsTime
             if CommandLine.arguments.contains("--diagnostics") {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, let button = self.statusItem.button else { return }
-                    print("RestFlow menu: showTime=\(showsTime), width=\(button.frame.width)pt, icon=12pt")
+                    print("RestFlow menu: showTime=\(showsTime), width=\(button.frame.width)pt, icon=18pt")
                     fflush(stdout)
                 }
             }
@@ -182,13 +172,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                            willPresent notification: UNNotification,
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .list])
-    }
-}
-
-private extension NSAffineTransform {
-    static func transformForIcon() -> NSAffineTransform {
-        let transform = NSAffineTransform()
-        transform.scale(by: 12.0 / 14.0)
-        return transform
     }
 }

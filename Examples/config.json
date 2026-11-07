@@ -79,7 +79,7 @@
   "longMessageID": "stretch",
   "visualID": "rings",
   "checkForUpdatesAutomatically": true,
-  "visualOpacity": 1,
+  "breakTransparency": 0,
   "launchAtLogin": false,
   "pauseShortcut": null,
   "restartShortcut": null,

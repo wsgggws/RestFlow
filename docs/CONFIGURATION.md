@@ -13,7 +13,7 @@
 | `schemaVersion` | `1` | 当前只支持 `1` |
 | `language` | `"zh-Hans"` | `"zh-Hans"` 或 `"en"`，立即切换界面及内置文案 |
 | `checkForUpdatesAutomatically` | `true` | 启动／打开菜单时自动检查 GitHub 最新 Release，同一进程两次自动检查至少间隔 24 小时；关闭后仍可手动检查 |
-| `visualOpacity` | `1` | `0...1`，0 完全透明，1 完全显示；保留素材原色与清晰度，文字和计时不受影响 |
+| `breakTransparency` | `0` | `0...1`，0 完全遮住桌面，1 透出桌面；整个背景与动画同步变淡，文字、计时与 Esc 保持可见 |
 | `launchAtLogin` | `false` | 开机启动的应用偏好；macOS 仍可要求用户批准 |
 | `pauseShortcut` | `null` | 暂停／继续的全局快捷键，见下文 |
 | `restartShortcut` | `null` | 重新开始的全局快捷键 |
@@ -69,7 +69,9 @@
 open dist/RestFlow.app --args --preview --paused
 ```
 
-参数只在新进程启动时读取。应用已运行时请用设置页预览。`--settings` 打开设置，`--paused` 以暂停状态启动。Esc 在预览窗口关闭预览，在真实休息窗口提前结束本次休息；这是应用内按键处理，不需要辅助功能权限，也不会在其他应用中监听 Esc。
+参数只在新进程启动时读取。应用已运行时请用设置页预览。`--settings` 打开设置，`--paused` 以暂停状态启动；进入预览会立即开始运行中的短休息，覆盖暂停状态。预览无顶部标题，倒计时结束、按 Esc 或点击底部 Esc 后开始新一段专注，不额外累计或清零已完成轮数。已在休息时再次操作不会重置倒计时。
+
+休息窗口显示期间阻止普通按键及 ⌘Tab，临时注册全局 Esc，因此窗口失焦后也可退出；关闭后移除按键监听、释放全局 Esc 并恢复系统界面状态。应用自定义的三个快捷键在休息期间暂停。无需辅助功能权限；系统锁屏及紧急退出仍可使用，不能拦截所有系统级按键。若 Esc 已被其他程序占用，设置中显示错误，仍可在休息窗口内按 Esc 或点击退出。
 
 ## 通知与错误恢复
 
@@ -102,13 +104,13 @@ open dist/RestFlow.app --args --preview --paused
 
 自动化界面调试可冷启动附加 `--ui-test --settings --paused`，仅本次运行显示 Dock 图标以供系统自动化识别；正常启动保持菜单栏模式。
 
-## 版本、透明度与迁移（0.5.0）
+## 版本、透明度与迁移（0.6.0）
 
 版本与更新入口位于设置 → 通用。点击“可升级至 vX.Y.Z”打开本仓库 Release 下载页；应用不自动下载或替换自身。检查使用公开 GitHub API，限流时回退同仓库官方 latest 重定向。
 
-`visualOpacity` 直接控制素材图层的不透明度（界面名“透明度”），不再进行灰化或模糊。旧字段 `visualGrayness` 仍可读取，按旧淡化值迁移为 `1 - grayness × 0.4`；同时存在时以 `visualOpacity` 为准，GUI 保存只写新字段。旧配置中的内置文案，仅在 ID 与旧内置文本完全匹配时去除出处；自定义文本保持原样。
+`breakTransparency` 控制整个背景与矢量／图片／GIF／Lottie 的透明度，默认 0（完全遮挡），越高越能看清桌面与其他窗口。文字、倒计时和 Esc 不变透明。旧 `visualGrayness`、`visualOpacity` 字段仍接受有效范围 0...1，但旧字段只影响素材，不能表达整个背景的新含义，因此迁移后使用新默认值 0；若存在明确的 `breakTransparency` 则使用该值。GUI 保存只写新字段。旧配置中的内置文案，仅在 ID 与旧内置文本完全匹配时去除出处；自定义文本保持原样。
 
-隐藏时间时图标区域为 16 点，图案为 12 点；相邻应用的公共间距由 macOS 管理。冷启动附加 `--diagnostics` 可读取实际按钮宽度。
+隐藏时间时图标区域采用系统 `NSStatusItem.squareLength`（本机实测 22 点），SF Symbol 为 18 点；相邻应用的公共间距由 macOS 管理。冷启动附加 `--diagnostics` 可读取实际按钮宽度。
 
 ## 全局快捷键与开机启动
 
@@ -136,3 +138,5 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-t
 ```
 
 构建包的 `--check-system-integration` 检查 Carbon 注册、事件分发与冲突回滚，只读取登录项目状态，不启用或关闭登录项目。
+
+`--check-break-integration` 使用临时配置和可控时钟，检查短休息倒计时、背景 alpha、失焦后的全局 Esc 及窗口／按键状态清理；会短暂显示休息窗口，不修改用户配置或登录项目。

@@ -10,6 +10,7 @@ final class ShortcutController {
     private var localMonitor: Any?
     var perform: ((Action) -> Void)?
     var isRecording = false
+    var isSuspended = false
     var recordingHandler: ((KeyboardShortcut) -> Void)?
     private let signature: OSType = 0x52464C57 // RFLW
 
@@ -22,8 +23,9 @@ final class ShortcutController {
                                            MemoryLayout<EventHotKeyID>.size, nil, &id)
             guard result == noErr else { return result }
             let controller = Unmanaged<ShortcutController>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated {
-                if id.signature == controller.signature,
+            return MainActor.assumeIsolated {
+                guard id.signature == controller.signature else { return OSStatus(eventNotHandledErr) }
+                if !controller.isSuspended,
                    let registration = controller.registrations.first(where: { ShortcutController.hotKeyID($0.value.0) == id.id }) {
                     if CommandLine.arguments.contains("--diagnostics") {
                         print("RestFlow hotkey: Carbon action=\(registration.key)"); fflush(stdout)
@@ -31,18 +33,19 @@ final class ShortcutController {
                     if controller.isRecording { controller.recordingHandler?(registration.value.0) }
                     else { controller.perform?(registration.key) }
                 }
+                return noErr
             }
-            return noErr
         }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
         // App-directed events (including accessibility automation) can bypass Carbon's global dispatcher.
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                guard let self, !self.isRecording else { return event }
+            let consumed = MainActor.assumeIsolated {
+                guard let self, !self.isRecording, !self.isSuspended else { return false }
                 let chord = KeyboardShortcut(keyCode: UInt32(event.keyCode), modifiers: Self.carbonModifiers(event.modifierFlags))
-                guard let action = self.registrations.first(where: { $0.value.0 == chord })?.key else { return event }
+                guard let action = self.registrations.first(where: { $0.value.0 == chord })?.key else { return false }
                 if !event.isARepeat { self.perform?(action) }
-                return nil
+                return true
             }
+            return consumed ? nil : event
         }
     }
 
