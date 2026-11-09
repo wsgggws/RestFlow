@@ -53,7 +53,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreview = false
     @Published private(set) var isAway = false
     @Published private(set) var canDefer = false
-    private var previewSnapshot: (engine: SessionEngine, running: Bool)?
+    private var previewSnapshot: (engine: SessionEngine, running: Bool, resumeAfterSleep: Bool)?
     private var lastShownMessageID: String?
     private var lastShownVisual: BuiltinVisual?
     private var focusToken = UUID().uuidString
@@ -157,7 +157,7 @@ final class AppModel: ObservableObject {
         let running = !engine.isPaused
         var saved = engine
         saved.pause(at: now)
-        previewSnapshot = (saved, running)
+        previewSnapshot = (saved, running, resumeAfterSleep)
         isPreview = true
         engine.startShortBreak(at: now)
         prepareBreakContent()
@@ -169,6 +169,7 @@ final class AppModel: ObservableObject {
     private func finishPreview() {
         guard let saved = previewSnapshot else { return }
         engine = saved.engine
+        resumeAfterSleep = saved.resumeAfterSleep
         engine.plan = settings.plan
         if saved.running { engine.resume(at: now) }
         previewSnapshot = nil
@@ -195,6 +196,18 @@ final class AppModel: ObservableObject {
         let previous = settings.mediaPath
         settings = updated
         if settings.mediaPath == nil { MediaStore.removeManaged(path: previous) }
+    }
+
+    func selectSound(_ id: String) {
+        var updated = settings
+        if id == "__custom__" {
+            guard updated.soundPath != nil else { return }
+        } else {
+            updated.soundName = id
+            updated.soundPath = nil
+        }
+        updated.soundEnabled = id != AppSettings.noSoundID
+        settings = updated
     }
 
     func text(_ chinese: String, _ english: String) -> String { settings.language.text(chinese, english) }
@@ -595,6 +608,11 @@ final class AppModel: ObservableObject {
     func setScreenLocked(_ locked: Bool) {
         guard !isPreview else { if locked { finishPreview(); setScreenLocked(true) }; return }
         accountElapsed()
+        if locked && resumeAfterSleep {
+            // Transfer the sleep pause to the lock owner; wake must not release it.
+            resumeAfterSleep = false
+            engine.resume(at: now)
+        }
         screenLocked = locked
         if locked && engine.phase.isBreak {
             let manuallyPaused = engine.isPaused && !resumeAfterSleep

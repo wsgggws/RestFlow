@@ -67,6 +67,22 @@ enum WellbeingIntegrationChecks {
             check(!app.isAway && day(app).focusSeconds == 320, "idle detection can be disabled for reading and video")
         }
         do {
+            let app = model("sleep-then-lock"); defer { app.stop() }
+            app.restNow(); app.willSleep(); app.setScreenLocked(true)
+            mono += 3600; wall.addTimeInterval(3600); app.didWake()
+            let stillLocked = app.isAway && app.isPaused && app.phase == .work
+            app.setScreenLocked(false)
+            check(stillLocked && !app.isPaused && day(app).restSeconds == 0 && day(app).awaySeconds == 0,
+                  "wake cannot release a lock pause when screen lock arrives after sleep")
+        }
+        do {
+            let app = model("preview-sleep-lock"); defer { app.stop() }
+            app.togglePause(); app.previewBreak(); app.willSleep(); app.setScreenLocked(true)
+            app.didWake(); app.setScreenLocked(false)
+            check(!app.isPreview && app.phase == .work && app.isPaused && app.statistics.days.isEmpty,
+                  "closing a sleeping preview on lock restores the original manual pause")
+        }
+        do {
             let app = model("preview"); defer { app.stop() }
             advance(app, 20, idle: 0)
             app.previewBreak(); advance(app, 4, idle: 0)
@@ -94,6 +110,18 @@ enum WellbeingIntegrationChecks {
             check(app.remaining == 1500, "delay preference is honored")
             app.settings.deferEnabled = true; app.deferBreak(token: "stale")
             check(app.remaining == 1500 && app.canDefer, "stale notification action cannot delay a different focus phase")
+        }
+        do {
+            let app = model("sound-migration"); defer { app.stop() }
+            app.settings.soundPath = "sounds/legacy.aiff"
+            app.settings.soundEnabled = false
+            app.selectSound("__custom__")
+            let restored = app.settings.soundEnabled && app.settings.soundPath == "sounds/legacy.aiff"
+            app.selectSound(AppSettings.noSoundID)
+            let silent = !app.settings.soundEnabled && app.settings.soundPath == nil && !app.settings.hasSound
+            app.selectSound(AppSettings.randomSoundID)
+            check(restored && silent && app.settings.soundEnabled && app.settings.soundName == AppSettings.randomSoundID,
+                  "unified sound selection restores legacy disabled custom sounds and clears custom paths for none")
         }
         return failures == 0 ? 0 : 1
     }

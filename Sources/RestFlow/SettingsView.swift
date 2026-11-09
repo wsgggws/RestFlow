@@ -257,22 +257,16 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Picker(t("系统提示音", "System sound"), selection: Binding(
                             get: { !model.settings.soundEnabled ? AppSettings.noSoundID : (model.settings.soundPath == nil ? model.settings.soundName : "__custom__") },
-                            set: { value in
-                                guard value != "__custom__" else { return }
-                                var settings = model.settings
-                                settings.soundName = value
-                                settings.soundEnabled = value != AppSettings.noSoundID
-                                settings.soundPath = nil
-                                model.settings = settings
-                            })) {
+                            set: { model.selectSound($0) })) {
                             Text(t("无", "None")).tag(AppSettings.noSoundID)
                             Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
                             ForEach(AppSettings.systemSounds, id: \.self) { Text($0).tag($0) }
                             if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
                         }
                         HStack {
-                            Text(model.settings.soundPath ?? (model.settings.soundName == AppSettings.noSoundID ? t("无", "None") : t("使用系统提示音", "Using system sound")))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
+                            if let path = model.settings.soundPath {
+                                Text(model.soundURL?.lastPathComponent ?? path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
                             Spacer()
                             Button(t("导入声音…", "Import sound…")) { model.importSound() }
                             if model.settings.soundPath != nil {
