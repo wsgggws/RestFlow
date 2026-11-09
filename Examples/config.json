@@ -98,5 +98,10 @@
     "afternoonEnabled": true,
     "afternoonStartMinute": 810,
     "afternoonEndMinute": 1110
-  }
+  },
+  "idleDetectionEnabled": true,
+  "deferEnabled": true,
+  "contentStyle": "personal",
+  "favoriteMessageIDs": [],
+  "favoriteVisualIDs": []
 }

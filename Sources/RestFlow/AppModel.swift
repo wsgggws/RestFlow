@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 import RestFlowCore
 import UserNotifications
 
@@ -39,13 +40,28 @@ final class AppModel: ObservableObject {
                 validateSound()
             }
             if settings.messages != oldValue.messages || settings.shortMessageID != oldValue.shortMessageID ||
-                settings.longMessageID != oldValue.longMessageID || settings.visualID != oldValue.visualID {
+                settings.longMessageID != oldValue.longMessageID || settings.visualID != oldValue.visualID ||
+                settings.contentStyle != oldValue.contentStyle || settings.favoriteMessageIDs != oldValue.favoriteMessageIDs ||
+                settings.favoriteVisualIDs != oldValue.favoriteVisualIDs {
                 prepareBreakContent()
             }
+            if settings.language != oldValue.language { feedback.registerActions(language: settings.language) }
+            publish(at: now)
             onSettingsChange?()
-            onRefresh?()
         }
     }
+    @Published private(set) var isPreview = false
+    @Published private(set) var isAway = false
+    @Published private(set) var canDefer = false
+    private var previewSnapshot: (engine: SessionEngine, running: Bool)?
+    private var lastShownMessageID: String?
+    private var lastShownVisual: BuiltinVisual?
+    private var focusToken = UUID().uuidString
+    private var awayResetAt: TimeInterval?
+    private var idlePauseAt: TimeInterval?
+    private var screenLocked = false
+    private var lockObservers: [NSObjectProtocol] = []
+    private let idleSeconds: () -> TimeInterval
     @Published private(set) var isOutsideOperatingHours = false
     @Published private(set) var statisticsDays: [DailyStatistics] = []
     @Published private(set) var statisticsError: String?
@@ -87,9 +103,13 @@ final class AppModel: ObservableObject {
     private var now: TimeInterval { clock() }
 
     init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil,
+         idleSeconds: (() -> TimeInterval)? = nil,
          wallClock: @escaping () -> Date = Date.init,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.clock = clock
+        self.idleSeconds = idleSeconds ?? (directory == nil ? {
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
+        } : { 0 })
         self.wallClock = wallClock
         self.loginItem = loginItem ?? LoginItemController()
         let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
@@ -124,7 +144,49 @@ final class AppModel: ObservableObject {
         publish(at: clock())
     }
 
-    func prepareBreakContent() { breakContent = BreakContent(settings: settings) }
+    func prepareBreakContent() {
+        breakContent = BreakContent(settings: settings, avoidingMessageID: lastShownMessageID, avoidingVisual: lastShownVisual)
+        lastShownMessageID = engine.phase == .longBreak ? breakContent.longMessageID : breakContent.shortMessageID
+        lastShownVisual = breakContent.visual
+    }
+
+    func previewBreak() {
+        guard !engine.phase.isBreak else { return }
+        refresh()
+        guard !engine.phase.isBreak else { return }
+        let running = !engine.isPaused
+        var saved = engine
+        saved.pause(at: now)
+        previewSnapshot = (saved, running)
+        isPreview = true
+        engine.startShortBreak(at: now)
+        prepareBreakContent()
+        feedback.stop(); feedback.clearNotification()
+        publish(at: now)
+        onPhaseChange?()
+    }
+
+    private func finishPreview() {
+        guard let saved = previewSnapshot else { return }
+        engine = saved.engine
+        engine.plan = settings.plan
+        if saved.running { engine.resume(at: now) }
+        previewSnapshot = nil
+        isPreview = false
+        lastObservation = (now, wallClock())
+        synchronizeOperatingHours()
+        publish(at: now)
+        onPhaseChange?()
+    }
+
+    func deferBreak(token: String? = nil) {
+        if let token, token != focusToken { return }
+        refresh()
+        guard canDefer, engine.deferBreak(at: now) else { return }
+        feedback.stop(); feedback.clearNotification()
+        publish(at: now)
+    }
+
 
     func selectVisual(_ id: String) {
         var updated = settings
@@ -146,6 +208,8 @@ final class AppModel: ObservableObject {
     var mediaURL: URL? { configuration.resolve(settings.mediaPath) }
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
     var menuStatusText: String {
+        if isPreview { return text("预览：", "Preview: ") + timeText }
+        if isAway { return text("已离开 · 计时暂停", "Away · Timer paused") }
         if isOutsideOperatingHours { return text("非运行时段", "Outside operating hours") }
         let phase = phase.isBreak ? text("休息", "Rest") : text("专注", "Focus")
         return phase + text("：", ": ") + timeText + (isPaused ? text(" · 已暂停", " · Paused") : "")
@@ -167,6 +231,13 @@ final class AppModel: ObservableObject {
                                                        object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.didWake() }
         })
+        let distributed = DistributedNotificationCenter.default()
+        for (name, locked) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
+            lockObservers.append(distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.setScreenLocked(locked) }
+            })
+        }
+        feedback.registerActions(language: settings.language)
         refreshNotificationStatus()
         validateMedia()
         validateSound()
@@ -174,6 +245,7 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        if isPreview { finishPreview() }
         accountElapsed()
         synchronizeOperatingHours()
         finishObservedBreak(completed: engine.remaining(at: now) <= 0)
@@ -181,6 +253,8 @@ final class AppModel: ObservableObject {
         timer?.invalidate()
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         workspaceObservers.removeAll()
+        lockObservers.forEach { DistributedNotificationCenter.default().removeObserver($0) }
+        lockObservers.removeAll()
         feedback.stop()
         feedback.clearNotification()
         shortcuts.stop()
@@ -193,11 +267,13 @@ final class AppModel: ObservableObject {
             reloadConfiguration()
         }
         accountElapsed()
+        synchronizePresence()
         synchronizeOperatingHours()
         current = now
         let wasBreak = engine.phase.isBreak
         let events = engine.tick(at: current)
-        if wasBreak && engine.phase == .work { finishObservedBreak(completed: true) }
+        if wasBreak && engine.phase == .work && isPreview { finishPreview(); return }
+        if wasBreak && engine.phase == .work { finishObservedBreak(completed: true); focusToken = UUID().uuidString }
         if current >= nextStatisticsSave { flushStatistics(); nextStatisticsSave = current + 15 }
         publish(at: current)
         for event in events {
@@ -205,7 +281,7 @@ final class AppModel: ObservableObject {
             case .warning:
                 let nextBreak: SessionPhase = completedWorkSessions + 1 >= settings.cycles ? .longBreak : .shortBreak
                 guard settings.shouldPrealert(for: nextBreak) else { continue }
-                feedback.notifyBreak(in: Int(ceil(remaining)), language: settings.language)
+                feedback.notifyBreak(in: Int(ceil(remaining)), language: settings.language, deferToken: canDefer ? focusToken : nil)
                 playSound()
             case .phaseChanged:
                 if phase.isBreak { beginObservedBreak(); prepareBreakContent() }
@@ -217,10 +293,10 @@ final class AppModel: ObservableObject {
     }
 
     func togglePause() {
-        guard !isOutsideOperatingHours else { return }
+        guard isPreview || (!isOutsideOperatingHours && !isAway) else { return }
         resumeAfterSleep = false
         refresh()
-        guard !isOutsideOperatingHours else { return }
+        guard isPreview || (!isOutsideOperatingHours && !isAway) else { return }
         let current = now
         if engine.isPaused { engine.resume(at: current) } else { engine.pause(at: current) }
         feedback.clearNotification()
@@ -229,6 +305,8 @@ final class AppModel: ObservableObject {
     }
 
     func restart() {
+        if isPreview { finishPreview() }
+        focusToken = UUID().uuidString
         resumeAfterSleep = false
         accountElapsed()
         synchronizeOperatingHours()
@@ -260,7 +338,7 @@ final class AppModel: ObservableObject {
 
     func restNow() {
         refresh()
-        guard !engine.phase.isBreak, !isOutsideOperatingHours else { return }
+        guard !engine.phase.isBreak, !isOutsideOperatingHours, !isAway else { return }
         accountElapsed()
         resumeAfterSleep = false
         engine.restNow(at: now)
@@ -275,6 +353,8 @@ final class AppModel: ObservableObject {
 
     func endBreak() {
         guard engine.phase.isBreak else { return }
+        if isPreview { finishPreview(); return }
+        focusToken = UUID().uuidString
         resumeAfterSleep = false
         accountElapsed()
         synchronizeOperatingHours()
@@ -338,7 +418,10 @@ final class AppModel: ObservableObject {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let name = "\(UUID().uuidString).\(source.pathExtension)"
             try FileManager.default.copyItem(at: source, to: folder.appendingPathComponent(name))
-            settings.soundPath = "sounds/\(name)"
+            var updated = settings
+            updated.soundPath = "sounds/\(name)"
+            updated.soundEnabled = true
+            settings = updated
         } catch { configurationError = error.localizedDescription }
     }
 
@@ -400,6 +483,8 @@ final class AppModel: ObservableObject {
     }
 
     private func publish(at current: TimeInterval) {
+        canDefer = settings.deferEnabled && !isPreview && !isAway && !isOutsideOperatingHours &&
+            engine.phase == .work && !engine.isPaused && !engine.didDefer && engine.remaining(at: current) > 0
         phase = engine.phase
         isPaused = engine.isPaused
         remaining = engine.remaining(at: current)
@@ -430,11 +515,26 @@ final class AppModel: ObservableObject {
     private func accountElapsed(schedule: OperatingSchedule? = nil) {
         let current = now, date = wallClock()
         defer { lastObservation = (current, date) }
-        guard let previous = lastObservation, !engine.isPaused else { return }
+        guard let previous = lastObservation, !isPreview else { return }
         let elapsed = current - previous.time
         // A clock/timezone correction cannot invent hours of activity.
         guard elapsed > 0, abs(date.timeIntervalSince(previous.date) - elapsed) < 2 else { return }
+        if isAway {
+            statistics.recordAway(from: previous.date, to: date, schedule: schedule ?? settings.operatingSchedule)
+            statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
+            return
+        }
+        guard !engine.isPaused else { return }
         var duration = min(elapsed, engine.remaining(at: previous.time))
+        if settings.idleDetectionEnabled, engine.phase == .work {
+            let boundary = current - max(0, idleSeconds() - 60)
+            if idleSeconds() >= 60 {
+                idlePauseAt = max(previous.time, boundary)
+                duration = min(duration, max(0, boundary - previous.time))
+                let awayStart = previous.date.addingTimeInterval(max(0, boundary - previous.time))
+                statistics.recordAway(from: awayStart, to: date, schedule: schedule ?? settings.operatingSchedule)
+            }
+        }
         let schedule = schedule ?? settings.operatingSchedule
         if schedule.enabled, let window = schedule.windows(on: previous.date).first(where: { previous.date >= $0.start && previous.date < $0.end }), date >= window.end {
             let untilEnd = window.end.timeIntervalSince(previous.date)
@@ -469,13 +569,57 @@ final class AppModel: ObservableObject {
         catch { statisticsError = error.localizedDescription }
     }
 
+    /// Only elapsed idle duration is observed; no input contents or application names are collected.
+    private func synchronizePresence() {
+        guard !isPreview else { return }
+        let idle = max(0, idleSeconds())
+        let absent = screenLocked || (settings.idleDetectionEnabled && idle >= 60)
+        if isAway && !absent {
+            let longAbsence = now >= (awayResetAt ?? .infinity)
+            isAway = false; awayResetAt = nil
+            if longAbsence { engine.resumeAfterAbsence(at: now); focusToken = UUID().uuidString }
+            else { engine.resume(at: now) }
+            synchronizeOperatingHours()
+            publish(at: now)
+            onPhaseChange?()
+        } else if !isAway && absent && !engine.isPaused && engine.phase == .work {
+            engine.pause(at: idlePauseAt ?? now)
+            idlePauseAt = nil
+            awayResetAt = now + (screenLocked ? 300 : max(0, 300 - idle))
+            isAway = true
+            feedback.stop(); feedback.clearNotification()
+            publish(at: now)
+        }
+    }
+
+    func setScreenLocked(_ locked: Bool) {
+        guard !isPreview else { if locked { finishPreview(); setScreenLocked(true) }; return }
+        accountElapsed()
+        screenLocked = locked
+        if locked && engine.phase.isBreak {
+            let manuallyPaused = engine.isPaused && !resumeAfterSleep
+            finishObservedBreak(completed: engine.remaining(at: now) <= 0)
+            engine.endBreak(at: now)
+            if manuallyPaused { engine.pause(at: now) }
+            focusToken = UUID().uuidString
+            publish(at: now)
+            onPhaseChange?()
+        }
+        synchronizePresence()
+        synchronizeOperatingHours()
+        publish(at: now)
+        flushStatistics()
+    }
+
     private func synchronizeOperatingHours() {
+        guard !isPreview else { return }
         let previousPhase = engine.phase, previouslyPaused = engine.isPaused
         let outside = !settings.operatingSchedule.contains(wallClock())
         if let boundary = scheduleBoundary {
             if engine.phase.isBreak {
                 finishObservedBreak(completed: engine.remaining(at: boundary) <= 0)
                 engine.endBreak(at: boundary)
+                focusToken = UUID().uuidString
             }
             if !engine.isPaused { engine.pause(at: boundary); schedulePaused = true }
             scheduleBoundary = nil
@@ -486,6 +630,7 @@ final class AppModel: ObservableObject {
             if engine.phase.isBreak {
                 finishObservedBreak(completed: false)
                 engine.endBreak(at: now)
+                focusToken = UUID().uuidString
             }
             if !engine.isPaused {
                 engine.pause(at: now)
@@ -493,7 +638,7 @@ final class AppModel: ObservableObject {
             }
             feedback.stop()
             feedback.clearNotification()
-        } else if schedulePaused {
+        } else if schedulePaused && !isAway {
             engine.resume(at: now)
             schedulePaused = false
         }

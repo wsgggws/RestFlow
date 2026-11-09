@@ -22,6 +22,8 @@ jobs:
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-menu-integration
       - name: Check operating hours and actual daily statistics
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-activity-integration
+      - name: Check away detection, defer and isolated previews
+        run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-wellbeing-integration
       - name: Check app names in English and Chinese
         run: |
           dist/RestFlow.app/Contents/MacOS/RestFlow --check-name-integration -AppleLanguages '(en)'

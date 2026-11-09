@@ -4,9 +4,20 @@ public struct DailyStatistics: Codable, Equatable, Identifiable, Sendable {
     public var id: String // Local yyyy-MM-dd at the time of observation
     public var focusSeconds: Double = 0
     public var restSeconds: Double = 0
+    public var awaySeconds: Double = 0
     public var completedBreaks: Int = 0
     public var insufficientBreaks: Int = 0
     public init(id: String) { self.id = id }
+    private enum CodingKeys: String, CodingKey { case id, focusSeconds, restSeconds, awaySeconds, completedBreaks, insufficientBreaks }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        focusSeconds = try c.decode(Double.self, forKey: .focusSeconds)
+        restSeconds = try c.decode(Double.self, forKey: .restSeconds)
+        awaySeconds = try c.decodeIfPresent(Double.self, forKey: .awaySeconds) ?? 0
+        completedBreaks = try c.decode(Int.self, forKey: .completedBreaks)
+        insufficientBreaks = try c.decode(Int.self, forKey: .insufficientBreaks)
+    }
 }
 
 /// Local aggregates only; corrupt files and concurrent writers are never overwritten.
@@ -30,6 +41,7 @@ public final class StatisticsStore {
               document.days.allSatisfy({ day in
                   day.id.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil &&
                   day.focusSeconds.isFinite && (0...172800).contains(day.focusSeconds) &&
+                  day.awaySeconds.isFinite && (0...172800).contains(day.awaySeconds) &&
                   day.restSeconds.isFinite && (0...172800).contains(day.restSeconds) &&
                   (0...100000).contains(day.completedBreaks) && (0...100000).contains(day.insufficientBreaks)
               }) else { throw ConfigurationError.invalid("Invalid statistics.json") }
@@ -57,6 +69,16 @@ public final class StatisticsStore {
             dirty = true
         }
         return recorded
+    }
+
+    public func recordAway(from start: Date, to end: Date, schedule: OperatingSchedule, calendar: Calendar = .current) {
+        for interval in schedule.segments(from: start, to: end, calendar: calendar) {
+            let key = Self.dayKey(interval.start, calendar: calendar)
+            var day = days[key] ?? DailyStatistics(id: key)
+            day.awaySeconds += interval.duration
+            days[key] = day
+            dirty = true
+        }
     }
 
     public func finishBreak(on date: Date, completed: Bool, calendar: Calendar = .current) {

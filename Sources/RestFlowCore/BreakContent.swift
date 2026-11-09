@@ -30,14 +30,25 @@ public struct BreakContent: Equatable, Sendable {
     public let longMessageID: String
     public let visual: BuiltinVisual
 
-    public init(settings: AppSettings, choose: ([String]) -> String = { $0.randomElement()! }) {
-        func resolve(_ id: String) -> String {
-            id == ReminderMessage.randomID ? choose(settings.messageChoices().map(\.id)) : id
+    public init(settings: AppSettings, avoidingMessageID: String? = nil, avoidingVisual: BuiltinVisual? = nil,
+                choose: ([String]) -> String = { $0.randomElement()! }) {
+        func pick(_ pool: [String], avoiding: String?) -> String {
+            let alternatives = pool.filter { $0 != avoiding }
+            return choose(alternatives.isEmpty ? pool : alternatives)
         }
-        shortMessageID = resolve(settings.shortMessageID)
-        longMessageID = resolve(settings.longMessageID)
+        func resolve(_ phase: SessionPhase) -> String {
+            let id = settings.effectiveMessageID(for: phase)
+            guard id == ReminderMessage.randomID else { return id }
+            let pool = settings.randomMessages
+            let previous = (settings.messages + ReminderMessage.defaults).first { $0.id == avoidingMessageID }
+            let previousKey = previous.map { ReminderMessage.selectionKey($0.displayText(in: settings.language)) }
+            let different = pool.filter { ReminderMessage.selectionKey($0.displayText(in: settings.language)) != previousKey }
+            return pick((different.isEmpty ? pool : different).map(\.id), avoiding: avoidingMessageID)
+        }
+        shortMessageID = resolve(.shortBreak)
+        longMessageID = resolve(.longBreak)
         let visualID = settings.visualID == BuiltinVisual.randomID
-            ? choose(BuiltinVisual.allCases.map(\.rawValue)) : settings.visualID
+            ? pick(settings.randomVisualIDs, avoiding: avoidingVisual?.rawValue) : settings.visualID
         visual = BuiltinVisual(rawValue: visualID) ?? .rings
     }
 

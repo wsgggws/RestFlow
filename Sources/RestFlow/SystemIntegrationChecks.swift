@@ -135,7 +135,7 @@ enum BreakIntegrationChecks {
         check(!NSApp.windows.contains(where: { $0.isVisible }), "Esc closes the break after focus is lost")
         controller.close()
         check(NSApp.presentationOptions == previousOptions, "closing a break restores system presentation options")
-        check(model.phase == .work && !model.isPaused && !model.shortcuts.isSuspended, "Esc resumes focus and restores configured shortcuts")
+        check(model.phase == .work && model.isPaused && !model.shortcuts.isSuspended, "Esc restores the original paused focus and configured shortcuts")
         var releasedEsc: EventHotKeyRef?
         let available = RegisterEventHotKey(UInt32(kVK_Escape), 0, EventHotKeyID(signature: 0x54455354, id: 43),
                                            GetEventDispatcherTarget(), 0, &releasedEsc)
@@ -190,6 +190,15 @@ enum BreakIntegrationChecks {
         model.refresh()
         check(model.phase == .work && model.completedWorkSessions == 0 && NSApp.presentationOptions == previousOptions,
               "invisible long break finishes the regular cycle")
+        model.settings.shortMessageID = "eyes"
+        model.settings.visualID = BuiltinVisual.rings.rawValue
+        controller.restNow()
+        check(model.phase.isBreak && NSApp.windows.contains(where: { $0.isVisible }), "real rest opens before a simulated screen lock")
+        model.setScreenLocked(true)
+        check(model.phase == .work && model.isAway && !NSApp.windows.contains(where: { $0.isVisible }) &&
+              NSApp.presentationOptions == previousOptions && !model.shortcuts.isSuspended,
+              "screen lock closes rest windows and releases input protection immediately")
+        model.setScreenLocked(false)
         return failures == 0 ? 0 : 1
     }
 }

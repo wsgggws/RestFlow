@@ -132,7 +132,7 @@ let checks: [(String, () -> Void)] = [
     ("early end preserves cycle", suite.testEarlyEndOfBreakPreservesCycleCount),
     ("manual rest counts down from paused focus without changing cycles", suite.testManualRestStartsWhilePausedAndPreservesCycle),
     ("one-cycle plan and disabled warning", suite.testOneCycleAlwaysUsesLongBreakAndZeroWarningDisablesPrealert),
- ] + configurationChecks() + releaseChecks() + activityChecks()
+ ] + configurationChecks() + releaseChecks() + activityChecks() + wellbeingChecks()
 for (name, check) in checks {
     let before = failures
     check()

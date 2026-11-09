@@ -59,6 +59,7 @@ public struct SessionEngine: Sendable {
     private var deadline: TimeInterval
     private var pausedRemaining: TimeInterval = 0
     private var didWarn = false
+    public private(set) var didDefer = false
 
     public init(plan: SessionPlan = SessionPlan(), now: TimeInterval) {
         self.plan = plan
@@ -132,6 +133,20 @@ public struct SessionEngine: Sendable {
         begin(.work, at: now)
     }
 
+    /// A single extension per focus phase; the cycle and plan remain unchanged.
+    @discardableResult
+    public mutating func deferBreak(at now: TimeInterval) -> Bool {
+        guard phase == .work, !isPaused, !didDefer, remaining(at: now) > 0 else { return false }
+        deadline += 180
+        phaseDuration += 180
+        didDefer = true
+        didWarn = true
+        return true
+    }
+
+    /// A sufficiently long absence starts fresh focus while retaining the long-break cycle.
+    public mutating func resumeAfterAbsence(at now: TimeInterval) { begin(.work, at: now) }
+
     private mutating func begin(_ phase: SessionPhase, at now: TimeInterval) {
         self.phase = phase
         phaseDuration = plan.duration(for: phase)
@@ -139,5 +154,6 @@ public struct SessionEngine: Sendable {
         pausedRemaining = 0
         isPaused = false
         didWarn = false
+        didDefer = false
     }
 }

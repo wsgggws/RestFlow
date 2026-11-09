@@ -50,11 +50,28 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
     ]
 }
 
+public enum ContentStyle: String, Codable, CaseIterable, Sendable {
+    case personal, classical, movement, quiet
+    public func title(in language: AppLanguage) -> String {
+        switch self {
+        case .personal: return language.text("自选", "Personal")
+        case .classical: return language.text("古典文案", "Classical")
+        case .movement: return language.text("简单动作", "Gentle movement")
+        case .quiet: return language.text("安静留白", "Quiet")
+        }
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let noSoundID = "__none__"
     public static let randomSoundID = "__random__"
     public static let systemSounds = ["Glass", "Tink", "Ping", "Purr", "Pop", "Blow"]
     public var operatingSchedule = OperatingSchedule()
+    public var idleDetectionEnabled = true
+    public var deferEnabled = true
+    public var contentStyle: ContentStyle = .personal
+    public var favoriteMessageIDs: [String] = []
+    public var favoriteVisualIDs: [String] = []
     public var schemaVersion = 1
     public var language: AppLanguage = .simplifiedChinese
     public var showMenuBarTime = true
@@ -89,8 +106,40 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public func message(for phase: SessionPhase, resolvedID: String? = nil) -> String {
-        let id = phase == .longBreak ? longMessageID : shortMessageID
-        return messages.first(where: { $0.id == (id == ReminderMessage.randomID ? resolvedID : id) })?.displayText(in: language) ?? ""
+        let id = effectiveMessageID(for: phase)
+        let selected = id == ReminderMessage.randomID ? resolvedID : id
+        let source = messages.first { $0.id == selected } ??
+            (contentStyle == .classical || contentStyle == .movement ? ReminderMessage.defaults.first { $0.id == selected } : nil)
+        return source?.displayText(in: language) ?? ""
+    }
+
+    public func effectiveMessageID(for phase: SessionPhase) -> String {
+        if contentStyle == .quiet { return ReminderMessage.noneID }
+        if contentStyle != .personal { return ReminderMessage.randomID }
+        return phase == .longBreak ? longMessageID : shortMessageID
+    }
+
+    public var randomMessages: [ReminderMessage] {
+        let movement = Set(["eyes", "stretch", "breathe", "walk"])
+        let classical = Set(ReminderMessage.defaults.map(\.id)).subtracting(movement)
+        let styled = messages.filter {
+            contentStyle == .classical ? classical.contains($0.id) :
+                (contentStyle == .movement ? movement.contains($0.id) : true)
+        }
+        let fallback = ReminderMessage.defaults.filter {
+            contentStyle == .classical ? classical.contains($0.id) : movement.contains($0.id)
+        }
+        let available = styled.isEmpty && (contentStyle == .classical || contentStyle == .movement) ? fallback : (styled.isEmpty ? messages : styled)
+        let favorites = available.filter { favoriteMessageIDs.contains($0.id) }
+        let pool = favorites.isEmpty ? available : favorites
+        var seen = Set<String>()
+        return pool.filter { seen.insert(ReminderMessage.selectionKey($0.displayText(in: language))).inserted }
+    }
+
+    public var randomVisualIDs: [String] {
+        let all = BuiltinVisual.allCases.map(\.rawValue)
+        let favorites = all.filter { favoriteVisualIDs.contains($0) }
+        return favorites.isEmpty ? all : favorites
     }
 
     public func containsMessage(_ text: String) -> Bool {
@@ -121,7 +170,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// A silent break still runs through the normal cycle, without windows or keyboard capture.
     public func showsBreakScreen(for phase: SessionPhase) -> Bool {
         guard phase.isBreak else { return false }
-        let messageID = phase == .longBreak ? longMessageID : shortMessageID
+        let messageID = effectiveMessageID(for: phase)
         return hasVisual || messageID != ReminderMessage.noneID
     }
 
@@ -142,6 +191,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             if !condition { throw ConfigurationError.invalid(message) }
         }
         try operatingSchedule.validate()
+        try check(Set(favoriteMessageIDs).count == favoriteMessageIDs.count && favoriteMessageIDs.allSatisfy { id in messages.contains { $0.id == id } }, "Favorites must refer to unique message IDs")
+        try check(Set(favoriteVisualIDs).count == favoriteVisualIDs.count && favoriteVisualIDs.allSatisfy { BuiltinVisual(rawValue: $0) != nil }, "Favorites must refer to unique built-in visuals")
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -182,6 +233,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
+        case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs
         case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
@@ -197,6 +249,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
             try values.decodeIfPresent(T.self, forKey: key) ?? fallback
         }
+        idleDetectionEnabled = try value(.idleDetectionEnabled, idleDetectionEnabled)
+        deferEnabled = try value(.deferEnabled, deferEnabled)
+        contentStyle = try value(.contentStyle, contentStyle)
+        favoriteMessageIDs = try value(.favoriteMessageIDs, favoriteMessageIDs)
+        favoriteVisualIDs = try value(.favoriteVisualIDs, favoriteVisualIDs)
         operatingSchedule = try value(.operatingSchedule, operatingSchedule)
         schemaVersion = try value(.schemaVersion, schemaVersion)
         language = try value(.language, language)

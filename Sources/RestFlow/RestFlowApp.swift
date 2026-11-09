@@ -9,6 +9,7 @@ enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-wellbeing-integration") { exit(WellbeingIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-activity-integration") { exit(ActivityIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-name-integration") {
             exit(AppIdentity.checkIntegration())
@@ -146,6 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
         addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
         addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
+        if model.settings.deferEnabled && !model.phase.isBreak {
+            addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
+        }
         if model.phase.isBreak { addItem(model.text("提前结束休息", "End break"), action: #selector(endBreak), to: menu) }
         menu.addItem(.separator())
         addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
@@ -164,15 +168,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                          checked: Bool = false, to menu: NSMenu) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.state = checked ? .on : .off
-        if model.isOutsideOperatingHours && [#selector(togglePause), #selector(restNow)].contains(action) { item.isEnabled = false }
+        if (model.isOutsideOperatingHours || model.isAway) && [#selector(togglePause), #selector(restNow)].contains(action) { item.isEnabled = false }
         if let shortcut {
             item.keyEquivalent = ShortcutController.keyEquivalent(shortcut)
             item.keyEquivalentModifierMask = ShortcutController.cocoaModifiers(shortcut)
         }
+        if action == #selector(deferBreak) { item.isEnabled = model.canDefer }
         item.target = self
         menu.addItem(item)
     }
 
+    @objc private func deferBreak() { model.deferBreak() }
     @objc private func restNow() { breakWindows.restNow() }
     @objc private func togglePause() { model.togglePause() }
     @objc private func restart() { model.restart() }
@@ -221,6 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         completionHandler([.banner, .list])
     }
 
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                           didReceive response: UNNotificationResponse,
+                                           withCompletionHandler completionHandler: @escaping () -> Void) {
+        let token = response.notification.request.content.userInfo["focusToken"] as? String
+        if response.actionIdentifier == FeedbackService.deferAction, let token {
+            Task { @MainActor [weak self] in
+                self?.model.deferBreak(token: token)
+                completionHandler()
+            }
+        } else { completionHandler() }
+    }
+
     /// Exercise the same status refresh path used by the running app, with isolated preferences.
     static func checkMenuIntegration() -> Int32 {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-menu-check-\(UUID())")
@@ -257,6 +275,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if let selected = item(action) { _ = NSApp.sendAction(action, to: selected.target, from: selected) }
             delegate.menuWillOpen(menu)
         }
+        check(item(#selector(deferBreak))?.isEnabled == true, "menu offers a single three-minute delay during running focus")
+        click(#selector(deferBreak))
+        check(delegate.model.timeText == "28:00" && item(#selector(deferBreak))?.isEnabled == false,
+              "native delay action extends focus and disables repeat delay")
+        delegate.model.restart()
+        delegate.menuWillOpen(menu)
         let settingsIndex = menu.items.firstIndex { $0.action == #selector(showSettings) }!
         check(menu.items[settingsIndex + 1].action == #selector(toggleMenuBarTime) &&
               menu.items[settingsIndex + 2].action == #selector(toggleLaunchAtLogin) &&

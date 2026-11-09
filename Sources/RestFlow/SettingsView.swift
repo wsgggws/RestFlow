@@ -15,10 +15,10 @@ struct SettingsView: View {
                 Image(systemName: "leaf.fill").foregroundStyle(accent)
                 Text("坐忘录 · RestFlow").font(.system(size: 16, weight: .semibold, design: .rounded))
                 Spacer()
-                Text(model.isOutsideOperatingHours ? t("非运行时段", "Outside hours") : (model.isPaused ? t("已暂停", "Paused") : model.phaseTitle))
+                Text(model.isPreview ? t("预览", "Preview") : (model.isAway ? t("已离开", "Away") : (model.isOutsideOperatingHours ? t("非运行时段", "Outside hours") : (model.isPaused ? t("已暂停", "Paused") : model.phaseTitle))))
                     .font(.caption).foregroundStyle(.secondary)
                 Text(model.timeText).font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
-                Button(model.isPaused ? t("继续", "Resume") : t("暂停", "Pause")) { model.togglePause() }.disabled(model.isOutsideOperatingHours)
+                Button(model.isPaused ? t("继续", "Resume") : t("暂停", "Pause")) { model.togglePause() }.disabled(!model.isPreview && (model.isOutsideOperatingHours || model.isAway))
                 Button(t("重新开始", "Restart")) { model.restart() }
             }.padding(16)
 
@@ -30,10 +30,9 @@ struct SettingsView: View {
             }
 
             TabView {
-                generalTab.tabItem { Label(t("通用", "General"), systemImage: "gearshape") }
                 planTab.tabItem { Label(t("计划", "Schedule"), systemImage: "timer") }
-                appearanceTab.tabItem { Label(t("休息界面", "Appearance"), systemImage: "photo") }
-                feedbackTab.tabItem { Label(t("通知与声音", "Sound & alerts"), systemImage: "bell") }
+                appearanceTab.tabItem { Label(t("休息", "Break"), systemImage: "photo") }
+                generalTab.tabItem { Label(t("通用", "General"), systemImage: "gearshape") }
                 StatisticsView(model: model).tabItem { Label(t("统计", "Statistics"), systemImage: "chart.bar") }
             }.padding(.horizontal, 16).padding(.bottom, 12)
 
@@ -41,7 +40,7 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button(t("预览休息界面", "Preview break")) { preview() }
-                    .buttonStyle(.bordered).disabled(model.isOutsideOperatingHours)
+                    .buttonStyle(.bordered)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
         .frame(width: 620, height: 620)
@@ -68,7 +67,7 @@ struct SettingsView: View {
                         shortcutRow(t("现在休息", "Rest now"), keyPath: \.restNowShortcut)
                     }.padding(10)
                 } label: { Text(t("快捷键", "Keyboard shortcuts")) }
-                GroupBox {
+                DisclosureGroup(t("高级：配置文件", "Advanced: configuration file")) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(model.configuration.fileURL.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         HStack {
@@ -78,7 +77,7 @@ struct SettingsView: View {
                             Button(t("重新加载", "Reload")) { model.reloadConfiguration(force: true) }
                         }
                     }.padding(8)
-                } label: { Label(t("配置文件", "Configuration file"), systemImage: "doc.text") }
+                }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -117,6 +116,13 @@ struct SettingsView: View {
                     }.padding(12)
                 }
                 note(t("修改从下个阶段生效；重新开始可立即应用。", "Changes apply to upcoming phases. Restart to apply now."))
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(t("离开时自动暂停", "Pause when away"), isOn: $model.settings.idleDetectionEnabled)
+                        note(t("闲置 1 分钟暂停，离开满 5 分钟后回来重新专注。阅读或看视频时可关闭。", "Pause after 1 idle minute; start fresh focus after 5 minutes away. Turn off while reading or watching videos."))
+                        Toggle(t("允许延后 3 分钟", "Allow a 3-minute delay"), isOn: $model.settings.deferEnabled)
+                    }.padding(10)
+                }
                 OperatingHoursView(schedule: $model.settings.operatingSchedule, language: model.settings.language)
                 Spacer(minLength: 0)
             }.padding(16)
@@ -127,6 +133,17 @@ struct SettingsView: View {
     private var appearanceTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                Picker(t("内容风格", "Content style"), selection: Binding(get: { model.settings.contentStyle }, set: { style in
+                    var updated = model.settings
+                    updated.contentStyle = style
+                    if style == .quiet && !updated.hasVisual { updated.visualID = BuiltinVisual.randomID }
+                    model.settings = updated
+                })) {
+                    ForEach(ContentStyle.allCases, id: \.rawValue) { style in
+                        Text(style.title(in: model.settings.language)).tag(style)
+                    }
+                }
+                if model.settings.contentStyle == .personal {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         messagePicker(t("短休息", "Short break"), selection: $model.settings.shortMessageID)
@@ -138,6 +155,16 @@ struct SettingsView: View {
                         }
                     }.padding(10)
                 } label: { Text(t("文案", "Messages")) }
+                }
+                if model.settings.contentStyle != .quiet {
+                    DisclosureGroup(t("收藏文案", "Favorite messages")) {
+                        note(t("随机优先使用当前风格下的收藏；未收藏时使用全部。", "Random uses favorites in this style, or all messages when none are selected."))
+                        ForEach(model.settings.messageChoices()) { message in
+                            Toggle(message.displayText(in: model.settings.language), isOn: favorite(message.id, key: \.favoriteMessageIDs))
+                                .toggleStyle(.checkbox).font(.caption)
+                        }
+                    }
+                }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -152,6 +179,14 @@ struct SettingsView: View {
                                 }
                             }
                             Button(t("导入…", "Import…")) { model.importMedia() }
+                        }
+                        DisclosureGroup(t("收藏场景", "Favorite scenes")) {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading) {
+                                ForEach(BuiltinVisual.allCases, id: \.rawValue) { visual in
+                                    Toggle(visual.title(in: model.settings.language), isOn: favorite(visual.rawValue, key: \.favoriteVisualIDs))
+                                        .toggleStyle(.checkbox).font(.caption)
+                                }
+                            }
                         }
                         if let path = model.settings.mediaPath {
                             Text(model.mediaURL?.lastPathComponent ?? path).font(.caption).lineLimit(1)
@@ -175,6 +210,7 @@ struct SettingsView: View {
                         }
                     }.padding(10)
                 } label: { Text(t("图片与动画", "Images & animation")) }
+                feedbackContent
             }.padding(12)
         }
     }
@@ -201,9 +237,8 @@ struct SettingsView: View {
                 set: { if $0 != "__custom__" { model.selectVisual($0) } })
     }
 
-    private var feedbackTab: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+    private var feedbackContent: some View {
+            VStack(alignment: .leading, spacing: 14) {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
                         Toggle(t("工作结束前提醒我", "Remind me before a break"), isOn: $model.settings.prealertEnabled)
@@ -220,13 +255,13 @@ struct SettingsView: View {
                 } label: { Label(t("休息预告", "Break prealert"), systemImage: "bell") }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
-                        Toggle(t("播放提示音", "Play sounds"), isOn: $model.settings.soundEnabled)
                         Picker(t("系统提示音", "System sound"), selection: Binding(
-                            get: { model.settings.soundPath == nil ? model.settings.soundName : "__custom__" },
+                            get: { !model.settings.soundEnabled ? AppSettings.noSoundID : (model.settings.soundPath == nil ? model.settings.soundName : "__custom__") },
                             set: { value in
                                 guard value != "__custom__" else { return }
                                 var settings = model.settings
                                 settings.soundName = value
+                                settings.soundEnabled = value != AppSettings.noSoundID
                                 settings.soundPath = nil
                                 model.settings = settings
                             })) {
@@ -234,7 +269,7 @@ struct SettingsView: View {
                             Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
                             ForEach(AppSettings.systemSounds, id: \.self) { Text($0).tag($0) }
                             if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
-                        }.disabled(!model.settings.soundEnabled)
+                        }
                         HStack {
                             Text(model.settings.soundPath ?? (model.settings.soundName == AppSettings.noSoundID ? t("无", "None") : t("使用系统提示音", "Using system sound")))
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
@@ -249,14 +284,22 @@ struct SettingsView: View {
                             Slider(value: $model.settings.volume, in: 0...1).accessibilityLabel(t("提示音音量", "Sound volume"))
                             Text("\(Int(model.settings.volume * 100))%").monospacedDigit().frame(width: 42, alignment: .trailing)
                             Button(t("试听", "Test sound")) { model.playSound() }.disabled(!model.settings.hasSound)
-                        }.disabled(!model.settings.soundEnabled)
+                        }.disabled(!model.settings.hasSound && model.settings.volume > 0)
                         if let error = model.soundError {
                             Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
                         }
                     }.padding(12)
                 } label: { Label(t("声音", "Sound"), systemImage: "speaker.wave.2") }
-            }.padding(8)
-        }
+            }
+    }
+
+    private func favorite(_ id: String, key: WritableKeyPath<AppSettings, [String]>) -> Binding<Bool> {
+        Binding(get: { model.settings[keyPath: key].contains(id) }, set: { selected in
+            var updated = model.settings
+            updated[keyPath: key].removeAll { $0 == id }
+            if selected { updated[keyPath: key].append(id) }
+            model.settings = updated
+        })
     }
 
     private func messagePicker(_ title: String, selection: Binding<String>) -> some View {
