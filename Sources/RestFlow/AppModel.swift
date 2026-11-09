@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
     @Published var settings: AppSettings {
         didSet {
             guard !restoringSettings else { return }
+            accountElapsed(schedule: oldValue.operatingSchedule)
             if !applyingFile {
                 let loginChanged = settings.launchAtLogin != oldValue.launchAtLogin
                 let loginWasEnabled = loginChanged && (loginItem.status == .enabled || loginItem.status == .requiresApproval)
@@ -31,6 +32,8 @@ final class AppModel: ObservableObject {
                 }
             }
             engine.plan = settings.plan
+            synchronizeOperatingHours()
+            flushStatistics()
             if settings.mediaPath != oldValue.mediaPath || settings.language != oldValue.language { validateMedia() }
             if settings.soundPath != oldValue.soundPath || settings.soundName != oldValue.soundName || settings.language != oldValue.language {
                 validateSound()
@@ -43,6 +46,10 @@ final class AppModel: ObservableObject {
             onRefresh?()
         }
     }
+    @Published private(set) var isOutsideOperatingHours = false
+    @Published private(set) var statisticsDays: [DailyStatistics] = []
+    @Published private(set) var statisticsError: String?
+    let statistics: StatisticsStore
     @Published private(set) var breakContent = BreakContent(settings: AppSettings())
     @Published private(set) var phase: SessionPhase
     @Published private(set) var isPaused = false
@@ -69,15 +76,27 @@ final class AppModel: ObservableObject {
     private var resumeAfterSleep = false
     private var workspaceObservers: [NSObjectProtocol] = []
 
+    private var schedulePaused = false
+    private var scheduleBoundary: TimeInterval?
+    private var lastObservation: (time: TimeInterval, date: Date)?
+    private var observedRest = false
+    private var lastRestDate = Date()
+    private var nextStatisticsSave: TimeInterval = 0
+    private let wallClock: () -> Date
     private let clock: () -> TimeInterval
     private var now: TimeInterval { clock() }
 
     init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil,
+         wallClock: @escaping () -> Date = Date.init,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.clock = clock
+        self.wallClock = wallClock
         self.loginItem = loginItem ?? LoginItemController()
         let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
         self.configuration = configuration
+        statistics = StatisticsStore(directory: configuration.directory)
+        do { try statistics.load() } catch { statisticsError = error.localizedDescription }
+        statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
         MediaStore.configurationDirectory = configuration.directory
         let loaded: AppSettings
         var errorMessage: String?
@@ -100,6 +119,9 @@ final class AppModel: ObservableObject {
             engine.pause(at: clock())
             isPaused = true
         }
+        lastObservation = (clock(), wallClock())
+        synchronizeOperatingHours()
+        publish(at: clock())
     }
 
     func prepareBreakContent() { breakContent = BreakContent(settings: settings) }
@@ -124,6 +146,7 @@ final class AppModel: ObservableObject {
     var mediaURL: URL? { configuration.resolve(settings.mediaPath) }
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
     var menuStatusText: String {
+        if isOutsideOperatingHours { return text("非运行时段", "Outside operating hours") }
         let phase = phase.isBreak ? text("休息", "Rest") : text("专注", "Focus")
         return phase + text("：", ": ") + timeText + (isPaused ? text(" · 已暂停", " · Paused") : "")
     }
@@ -151,6 +174,10 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        accountElapsed()
+        synchronizeOperatingHours()
+        finishObservedBreak(completed: engine.remaining(at: now) <= 0)
+        flushStatistics()
         timer?.invalidate()
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         workspaceObservers.removeAll()
@@ -160,12 +187,18 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
-        let current = now
+        var current = now
         if current >= nextConfigCheck {
             nextConfigCheck = current + 1
             reloadConfiguration()
         }
+        accountElapsed()
+        synchronizeOperatingHours()
+        current = now
+        let wasBreak = engine.phase.isBreak
         let events = engine.tick(at: current)
+        if wasBreak && engine.phase == .work { finishObservedBreak(completed: true) }
+        if current >= nextStatisticsSave { flushStatistics(); nextStatisticsSave = current + 15 }
         publish(at: current)
         for event in events {
             switch event {
@@ -175,7 +208,7 @@ final class AppModel: ObservableObject {
                 feedback.notifyBreak(in: Int(ceil(remaining)), language: settings.language)
                 playSound()
             case .phaseChanged:
-                if phase.isBreak { prepareBreakContent() }
+                if phase.isBreak { beginObservedBreak(); prepareBreakContent() }
                 feedback.clearNotification()
                 playSound()
                 onPhaseChange?()
@@ -184,17 +217,26 @@ final class AppModel: ObservableObject {
     }
 
     func togglePause() {
+        guard !isOutsideOperatingHours else { return }
         resumeAfterSleep = false
         refresh()
+        guard !isOutsideOperatingHours else { return }
         let current = now
         if engine.isPaused { engine.resume(at: current) } else { engine.pause(at: current) }
         feedback.clearNotification()
         publish(at: current)
+        flushStatistics()
     }
 
     func restart() {
         resumeAfterSleep = false
+        accountElapsed()
+        synchronizeOperatingHours()
+        finishObservedBreak(completed: engine.remaining(at: now) <= 0)
+        schedulePaused = false
         engine.restart(at: now)
+        synchronizeOperatingHours()
+        flushStatistics()
         feedback.stop()
         feedback.clearNotification()
         publish(at: now)
@@ -202,9 +244,13 @@ final class AppModel: ObservableObject {
     }
 
     func startShortBreak() {
-        guard !phase.isBreak else { return }
+        guard !phase.isBreak, !isOutsideOperatingHours else { return }
+        accountElapsed()
         resumeAfterSleep = false
+        synchronizeOperatingHours()
+        guard !isOutsideOperatingHours else { return }
         engine.startShortBreak(at: now)
+        beginObservedBreak()
         prepareBreakContent()
         feedback.clearNotification()
         playSound()
@@ -212,10 +258,31 @@ final class AppModel: ObservableObject {
         onPhaseChange?()
     }
 
+    func restNow() {
+        refresh()
+        guard !engine.phase.isBreak, !isOutsideOperatingHours else { return }
+        accountElapsed()
+        resumeAfterSleep = false
+        engine.restNow(at: now)
+        beginObservedBreak()
+        prepareBreakContent()
+        feedback.clearNotification()
+        playSound()
+        publish(at: now)
+        flushStatistics()
+        onPhaseChange?()
+    }
+
     func endBreak() {
         guard engine.phase.isBreak else { return }
         resumeAfterSleep = false
+        accountElapsed()
+        synchronizeOperatingHours()
+        guard engine.phase.isBreak else { flushStatistics(); return }
+        finishObservedBreak(completed: engine.remaining(at: now) <= 0)
         engine.endBreak(at: now)
+        synchronizeOperatingHours()
+        flushStatistics()
         playSound()
         feedback.clearNotification()
         publish(at: now)
@@ -328,7 +395,7 @@ final class AppModel: ObservableObject {
         if let url = soundURL {
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max
             valid = size <= 20 * 1024 * 1024 && NSSound(contentsOf: url, byReference: false) != nil
-        } else { valid = NSSound(named: NSSound.Name(settings.soundName)) != nil }
+        } else { valid = settings.soundName == AppSettings.randomSoundID || NSSound(named: NSSound.Name(settings.soundName)) != nil }
         soundError = valid ? nil : text("声音无法读取，请检查 soundPath 或 soundName。", "Unable to read sound. Check soundPath or soundName.")
     }
 
@@ -341,7 +408,9 @@ final class AppModel: ObservableObject {
         onRefresh?()
     }
 
-    private func willSleep() {
+    func willSleep() {
+        accountElapsed()
+        flushStatistics()
         guard !engine.isPaused else { return }
         engine.pause(at: now)
         resumeAfterSleep = true
@@ -350,11 +419,86 @@ final class AppModel: ObservableObject {
         publish(at: now)
     }
 
-    private func didWake() {
+    func didWake() {
+        lastObservation = (now, wallClock())
         guard resumeAfterSleep else { return }
         resumeAfterSleep = false
         engine.resume(at: now)
         refresh()
+    }
+
+    private func accountElapsed(schedule: OperatingSchedule? = nil) {
+        let current = now, date = wallClock()
+        defer { lastObservation = (current, date) }
+        guard let previous = lastObservation, !engine.isPaused else { return }
+        let elapsed = current - previous.time
+        // A clock/timezone correction cannot invent hours of activity.
+        guard elapsed > 0, abs(date.timeIntervalSince(previous.date) - elapsed) < 2 else { return }
+        var duration = min(elapsed, engine.remaining(at: previous.time))
+        let schedule = schedule ?? settings.operatingSchedule
+        if schedule.enabled, let window = schedule.windows(on: previous.date).first(where: { previous.date >= $0.start && previous.date < $0.end }), date >= window.end {
+            let untilEnd = window.end.timeIntervalSince(previous.date)
+            duration = min(duration, untilEnd)
+            scheduleBoundary = previous.time + untilEnd
+        }
+        guard duration > 0 else { return }
+        let end = previous.date.addingTimeInterval(duration)
+        let recorded = statistics.record(from: previous.date, to: end, phase: engine.phase, schedule: schedule)
+        if engine.phase.isBreak, recorded > 0 {
+            observedRest = true
+            lastRestDate = (schedule.segments(from: previous.date, to: end).last?.end ?? end).addingTimeInterval(-0.001)
+        }
+        let days = statistics.days.values.sorted { $0.id < $1.id }
+        if days != statisticsDays { statisticsDays = days }
+    }
+
+    private func beginObservedBreak() {
+        observedRest = true
+        lastRestDate = wallClock()
+    }
+
+    private func finishObservedBreak(completed: Bool) {
+        guard observedRest else { return }
+        statistics.finishBreak(on: lastRestDate, completed: completed)
+        observedRest = false
+        statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
+    }
+
+    private func flushStatistics() {
+        do { try statistics.save(); statisticsError = nil }
+        catch { statisticsError = error.localizedDescription }
+    }
+
+    private func synchronizeOperatingHours() {
+        let previousPhase = engine.phase, previouslyPaused = engine.isPaused
+        let outside = !settings.operatingSchedule.contains(wallClock())
+        if let boundary = scheduleBoundary {
+            if engine.phase.isBreak {
+                finishObservedBreak(completed: engine.remaining(at: boundary) <= 0)
+                engine.endBreak(at: boundary)
+            }
+            if !engine.isPaused { engine.pause(at: boundary); schedulePaused = true }
+            scheduleBoundary = nil
+        }
+        let changed = outside != isOutsideOperatingHours
+        isOutsideOperatingHours = outside
+        if outside {
+            if engine.phase.isBreak {
+                finishObservedBreak(completed: false)
+                engine.endBreak(at: now)
+            }
+            if !engine.isPaused {
+                engine.pause(at: now)
+                schedulePaused = true
+            }
+            feedback.stop()
+            feedback.clearNotification()
+        } else if schedulePaused {
+            engine.resume(at: now)
+            schedulePaused = false
+        }
+        if changed || previousPhase != engine.phase || previouslyPaused != engine.isPaused { publish(at: now) }
+        if changed || previousPhase != engine.phase { onPhaseChange?() }
     }
 
     var timeText: String { Self.formatTime(remaining) }

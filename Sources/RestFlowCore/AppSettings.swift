@@ -52,6 +52,9 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let noSoundID = "__none__"
+    public static let randomSoundID = "__random__"
+    public static let systemSounds = ["Glass", "Tink", "Ping", "Purr", "Pop", "Blow"]
+    public var operatingSchedule = OperatingSchedule()
     public var schemaVersion = 1
     public var language: AppLanguage = .simplifiedChinese
     public var showMenuBarTime = true
@@ -122,6 +125,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return hasVisual || messageID != ReminderMessage.noneID
     }
 
+    public func selectedSound(choose: ([String]) -> String = { $0.randomElement()! }) -> String {
+        soundName == Self.randomSoundID ? choose(Self.systemSounds) : soundName
+    }
+
     public var hasSound: Bool {
         soundEnabled && volume > 0 && (soundPath != nil || soundName != Self.noSoundID)
     }
@@ -134,6 +141,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         func check(_ condition: Bool, _ message: String) throws {
             if !condition { throw ConfigurationError.invalid(message) }
         }
+        try operatingSchedule.validate()
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -174,7 +182,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
+        case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
     }
@@ -189,6 +197,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
             try values.decodeIfPresent(T.self, forKey: key) ?? fallback
         }
+        operatingSchedule = try value(.operatingSchedule, operatingSchedule)
         schemaVersion = try value(.schemaVersion, schemaVersion)
         language = try value(.language, language)
         showMenuBarTime = try value(.showMenuBarTime, showMenuBarTime)

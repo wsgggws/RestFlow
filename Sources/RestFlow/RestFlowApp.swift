@@ -9,6 +9,7 @@ enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-activity-integration") { exit(ActivityIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-name-integration") {
             exit(AppIdentity.checkIntegration())
         }
@@ -163,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                          checked: Bool = false, to menu: NSMenu) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.state = checked ? .on : .off
+        if model.isOutsideOperatingHours && [#selector(togglePause), #selector(restNow)].contains(action) { item.isEnabled = false }
         if let shortcut {
             item.keyEquivalent = ShortcutController.keyEquivalent(shortcut)
             item.keyEquivalentModifierMask = ShortcutController.cocoaModifiers(shortcut)
@@ -171,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(item)
     }
 
-    @objc private func restNow() { breakWindows.preview() }
+    @objc private func restNow() { breakWindows.restNow() }
     @objc private func togglePause() { model.togglePause() }
     @objc private func restart() { model.restart() }
     @objc private func endBreak() { model.endBreak() }
@@ -224,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-menu-check-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         var settings = AppSettings()
+        settings.operatingSchedule.enabled = false
         settings.soundEnabled = false
         settings.checkForUpdatesAutomatically = false
         _ = try? ConfigurationStore(directory: directory).load(orCreate: settings)

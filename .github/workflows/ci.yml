@@ -20,6 +20,8 @@ jobs:
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-break-integration
       - name: Check status menu countdown and tooltip regression
         run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-menu-integration
+      - name: Check operating hours and actual daily statistics
+        run: dist/RestFlow.app/Contents/MacOS/RestFlow --check-activity-integration
       - name: Check app names in English and Chinese
         run: |
           dist/RestFlow.app/Contents/MacOS/RestFlow --check-name-integration -AppleLanguages '(en)'

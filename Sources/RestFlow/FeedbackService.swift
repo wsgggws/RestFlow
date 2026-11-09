@@ -11,7 +11,7 @@ final class FeedbackService {
         guard settings.hasSound else { return }
         let selected: NSSound?
         if let customURL { selected = NSSound(contentsOf: customURL, byReference: false) }
-        else { selected = NSSound(named: NSSound.Name(settings.soundName)) }
+        else { selected = NSSound(named: NSSound.Name(settings.selectedSound())) }
         guard let sound = selected else { return }
         sound.volume = Float(settings.volume)
         playingSound = sound

@@ -19,7 +19,15 @@ final class BreakWindowController {
         }
     }
 
+    func restNow() {
+        guard !model.isOutsideOperatingHours else { return }
+        compactPresentation = true
+        model.restNow()
+        if model.phase.isBreak { showAllScreens() }
+    }
+
     func preview() {
+        guard !model.isOutsideOperatingHours else { return }
         guard !model.phase.isBreak else { showAllScreens(); return }
         compactPresentation = true
         model.startShortBreak()
@@ -53,7 +61,7 @@ final class BreakWindowController {
     }
 
     private func showAllScreens() {
-        guard model.settings.showsBreakScreen(for: model.phase) else { close(); return }
+        guard !model.isOutsideOperatingHours, model.settings.showsBreakScreen(for: model.phase) else { close(); return }
         if windows.isEmpty {
             let frontmost = NSWorkspace.shared.frontmostApplication
             if frontmost?.processIdentifier != ProcessInfo.processInfo.processIdentifier {

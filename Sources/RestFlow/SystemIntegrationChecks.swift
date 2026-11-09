@@ -10,6 +10,7 @@ enum SystemIntegrationChecks {
         defer { controller.stop() }
         do {
             var settings = AppSettings()
+        settings.operatingSchedule.enabled = false
             let chord = KeyboardShortcut(keyCode: 35, modifiers: UInt32(controlKey | optionKey | cmdKey | shiftKey))
             settings.pauseShortcut = chord
             try controller.apply(settings)
@@ -76,6 +77,7 @@ enum BreakIntegrationChecks {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-break-check-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         var defaults = AppSettings()
+        defaults.operatingSchedule.enabled = false
         defaults.soundEnabled = false
         defaults.checkForUpdatesAutomatically = false
         _ = try? ConfigurationStore(directory: directory).load(orCreate: defaults)

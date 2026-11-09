@@ -13,14 +13,14 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "leaf.fill").foregroundStyle(accent)
-                Text(AppIdentity.displayName).font(.system(size: 16, weight: .semibold, design: .rounded))
+                Text("坐忘录 · RestFlow").font(.system(size: 16, weight: .semibold, design: .rounded))
                 Spacer()
-                Text(model.isPaused ? t("已暂停", "Paused") : model.phaseTitle)
+                Text(model.isOutsideOperatingHours ? t("非运行时段", "Outside hours") : (model.isPaused ? t("已暂停", "Paused") : model.phaseTitle))
                     .font(.caption).foregroundStyle(.secondary)
                 Text(model.timeText).font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
-                Button(model.isPaused ? t("继续", "Resume") : t("暂停", "Pause")) { model.togglePause() }
+                Button(model.isPaused ? t("继续", "Resume") : t("暂停", "Pause")) { model.togglePause() }.disabled(model.isOutsideOperatingHours)
                 Button(t("重新开始", "Restart")) { model.restart() }
-            }.padding(20)
+            }.padding(16)
 
             if let error = model.configurationError {
                 Label(t("配置未应用：", "Configuration not applied: ") + error, systemImage: "exclamationmark.triangle")
@@ -34,13 +34,14 @@ struct SettingsView: View {
                 planTab.tabItem { Label(t("计划", "Schedule"), systemImage: "timer") }
                 appearanceTab.tabItem { Label(t("休息界面", "Appearance"), systemImage: "photo") }
                 feedbackTab.tabItem { Label(t("通知与声音", "Sound & alerts"), systemImage: "bell") }
+                StatisticsView(model: model).tabItem { Label(t("统计", "Statistics"), systemImage: "chart.bar") }
             }.padding(.horizontal, 16).padding(.bottom, 12)
 
             Divider()
             HStack {
                 Spacer()
                 Button(t("预览休息界面", "Preview break")) { preview() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.bordered).disabled(model.isOutsideOperatingHours)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
         .frame(width: 620, height: 620)
@@ -96,28 +97,32 @@ struct SettingsView: View {
     }
 
     private var planTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GroupBox {
-                VStack(spacing: 18) {
-                    durationRow(t("专注", "Focus"), value: $model.settings.workMinutes, range: 1...240, step: 1, unit: t("分钟", "min"))
-                    Divider()
-                    durationRow(t("短休息", "Short break"), value: $model.settings.shortBreakSeconds, range: 5...1800, step: 5, unit: t("秒", "sec"))
-                    Divider()
-                    durationRow(t("长休息", "Long break"), value: $model.settings.longBreakMinutes, range: 1...120, step: 1, unit: t("分钟", "min"))
-                    Divider()
-                    Stepper(value: $model.settings.cycles, in: 1...20) {
-                        HStack {
-                            Text(t("长休息周期", "Long-break cycle"))
-                            Spacer()
-                            Text(t("每 \(model.settings.cycles) 段专注", "Every \(model.settings.cycles) sessions")).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                GroupBox {
+                    VStack(spacing: 18) {
+                        durationRow(t("专注", "Focus"), value: $model.settings.workMinutes, range: 1...240, step: 1, unit: t("分钟", "min"))
+                        Divider()
+                        durationRow(t("短休息", "Short break"), value: $model.settings.shortBreakSeconds, range: 5...1800, step: 5, unit: t("秒", "sec"))
+                        Divider()
+                        durationRow(t("长休息", "Long break"), value: $model.settings.longBreakMinutes, range: 1...120, step: 1, unit: t("分钟", "min"))
+                        Divider()
+                        Stepper(value: $model.settings.cycles, in: 1...20) {
+                            HStack {
+                                Text(t("长休息周期", "Long-break cycle"))
+                                Spacer()
+                                Text(t("每 \(model.settings.cycles) 段专注", "Every \(model.settings.cycles) sessions")).foregroundStyle(.secondary)
+                            }
                         }
-                    }
-                }.padding(12)
-            }
-            note(t("修改从下个阶段生效；重新开始可立即应用。", "Changes apply to upcoming phases. Restart to apply now."))
-            Spacer()
-        }.padding(16)
+                    }.padding(12)
+                }
+                note(t("修改从下个阶段生效；重新开始可立即应用。", "Changes apply to upcoming phases. Restart to apply now."))
+                OperatingHoursView(schedule: $model.settings.operatingSchedule, language: model.settings.language)
+                Spacer(minLength: 0)
+            }.padding(16)
+        }
     }
+
 
     private var appearanceTab: some View {
         ScrollView {
@@ -226,7 +231,8 @@ struct SettingsView: View {
                                 model.settings = settings
                             })) {
                             Text(t("无", "None")).tag(AppSettings.noSoundID)
-                            ForEach(["Glass", "Tink", "Ping", "Purr", "Pop", "Blow"], id: \.self) { Text($0).tag($0) }
+                            Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
+                            ForEach(AppSettings.systemSounds, id: \.self) { Text($0).tag($0) }
                             if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
                         }.disabled(!model.settings.soundEnabled)
                         HStack {

@@ -83,5 +83,20 @@
   "launchAtLogin": false,
   "pauseShortcut": null,
   "restartShortcut": null,
-  "restNowShortcut": null
+  "restNowShortcut": null,
+  "operatingSchedule": {
+    "enabled": true,
+    "weekdays": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "morningStartMinute": 540,
+    "morningEndMinute": 720,
+    "afternoonEnabled": true,
+    "afternoonStartMinute": 810,
+    "afternoonEndMinute": 1110
+  }
 }

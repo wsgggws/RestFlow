@@ -118,6 +118,15 @@ public struct SessionEngine: Sendable {
         begin(.shortBreak, at: now)
     }
 
+    /// Rest now replaces the current focus segment and advances the normal short/long cycle.
+    public mutating func restNow(at now: TimeInterval) {
+        guard !phase.isBreak else { return }
+        completedWorkSessions += 1
+        let long = completedWorkSessions >= plan.cycles
+        if long { completedWorkSessions = 0 }
+        begin(long ? .longBreak : .shortBreak, at: now)
+    }
+
     public mutating func endBreak(at now: TimeInterval) {
         guard phase.isBreak else { return }
         begin(.work, at: now)
