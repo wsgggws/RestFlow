@@ -45,8 +45,6 @@ struct OperatingHoursView: View {
                         Spacer()
                     }
                     if let error = state.error { Text(error).font(.caption).foregroundStyle(.red) }
-                    Text(t("午休及其他时段自动暂停提醒和统计。", "Reminders and statistics pause during lunch and outside these hours."))
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(10)
         } label: { Text(t("运行时段", "Operating hours")) }

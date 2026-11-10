@@ -153,6 +153,7 @@ enum WellbeingIntegrationChecks {
             check(app.settings.mediaPath == nil && !FileManager.default.fileExists(atPath: folder.path),
                   "managed media is removed only after the preference change saves successfully")
         } catch { check(false, "content editing: \(error)") }
+        failures += AudioIntegrationChecks.run()
         return failures == 0 ? 0 : 1
     }
 }

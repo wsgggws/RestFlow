@@ -11,6 +11,10 @@
   "soundEnabled": true,
   "soundName": "Glass",
   "soundPath": null,
+  "excludedSoundIDs": [],
+  "musicID": "__none__",
+  "musicPath": null,
+  "musicVolume": 0.3,
   "volume": 0.5,
   "mediaPath": null,
   "messages": [

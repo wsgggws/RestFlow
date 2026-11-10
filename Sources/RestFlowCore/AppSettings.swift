@@ -65,7 +65,8 @@ public enum ContentStyle: String, Codable, CaseIterable, Sendable {
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let noSoundID = "__none__"
     public static let randomSoundID = "__random__"
-    public static let systemSounds = ["Glass", "Tink", "Ping", "Purr", "Pop", "Blow"]
+    public static let systemSounds = ["Glass"]
+    public static let alertSoundIDs = AlertTone.allCases.map(\.rawValue)
     public var operatingSchedule = OperatingSchedule()
     public var idleDetectionEnabled = true
     public var deferEnabled = true
@@ -91,6 +92,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var soundEnabled = true
     public var soundName = "Glass"
     public var soundPath: String?
+    public var excludedSoundIDs: [String] = []
+    public var musicID = BuiltinVisual.noneID
+    public var musicPath: String?
+    public var musicVolume = 0.3
     public var volume: Double = 0.5
     public var messages = ReminderMessage.defaults
     public var shortMessageID = "eyes"
@@ -183,15 +188,44 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public func selectedSound(choose: ([String]) -> String = { $0.randomElement()! }) -> String {
-        soundName == Self.randomSoundID ? choose(Self.systemSounds) : soundName
+        guard soundName == Self.randomSoundID else { return soundName }
+        let pool = availableSounds.map(\.rawValue)
+        return pool.isEmpty ? Self.noSoundID : choose(pool)
     }
 
+    public var availableSounds: [AlertTone] { AlertTone.allCases.filter { !excludedSoundIDs.contains($0.rawValue) } }
     public var hasSound: Bool {
-        soundEnabled && volume > 0 && (soundPath != nil || soundName != Self.noSoundID)
+        soundEnabled && volume > 0 && (soundPath != nil || (soundName == Self.randomSoundID ? !availableSounds.isEmpty :
+            availableSounds.contains { $0.rawValue == soundName }))
+    }
+
+    @discardableResult
+    public mutating func hideSound(_ id: String) -> Bool {
+        guard AlertTone(rawValue: id) != nil, !excludedSoundIDs.contains(id) else { return false }
+        excludedSoundIDs.append(id)
+        if soundName == id { soundName = Self.noSoundID }
+        return true
+    }
+
+    public func resolveMusic(visual: BuiltinVisual, avoiding: String? = nil,
+                             choose: ([String]) -> String = { $0.randomElement()! }) -> String {
+        if musicPath != nil { return "__custom__" }
+        if musicID == BackgroundTrack.matchedID {
+            return hasVisual && mediaPath == nil ? visual.rawValue : Self.noSoundID
+        }
+        if musicID == Self.randomSoundID {
+            let alternatives = BackgroundTrack.allCases.map(\.rawValue).filter { $0 != avoiding }
+            return choose(alternatives)
+        }
+        return musicID
+    }
+
+    public var hasMusic: Bool {
+        musicVolume > 0 && (musicPath != nil || (musicID == BackgroundTrack.matchedID ? hasVisual && mediaPath == nil : musicID != Self.noSoundID))
     }
 
     public func shouldPrealert(for phase: SessionPhase) -> Bool {
-        phase.isBreak && prealertEnabled && (showsBreakScreen(for: phase) || hasSound)
+        phase.isBreak && prealertEnabled && (showsBreakScreen(for: phase) || hasSound || hasMusic)
     }
 
     public func validate() throws {
@@ -200,6 +234,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         try operatingSchedule.validate()
         try check(Set(excludedVisualIDs).count == excludedVisualIDs.count && excludedVisualIDs.allSatisfy { BuiltinVisual(rawValue: $0) != nil }, "Excluded visuals must name unique built-in scenes")
+        try check(Set(excludedSoundIDs).count == excludedSoundIDs.count && excludedSoundIDs.allSatisfy { AlertTone(rawValue: $0) != nil }, "Excluded sounds must name unique alert tones")
+        try check([Self.noSoundID, Self.randomSoundID].contains(soundName) || availableSounds.contains { $0.rawValue == soundName }, "soundName must name an available alert tone, __none__ or __random__")
+        try check([Self.noSoundID, Self.randomSoundID, BackgroundTrack.matchedID].contains(musicID) || BackgroundTrack(rawValue: musicID) != nil, "musicID must name a soundtrack, __none__, __random__ or __matched__")
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -207,6 +244,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             ("longBreakMinutes", longBreakMinutes, 1.0...120.0),
             ("warningSeconds", warningSeconds, 3.0...120.0),
             ("volume", volume, 0.0...1.0),
+            ("musicVolume", musicVolume, 0.0...1.0),
             ("breakTransparency", breakTransparency, 0.0...1.0),
         ] {
             try check(value.isFinite && range.contains(value), "\(name) must be within \(range)")
@@ -232,7 +270,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(shortMessageID) || messages.contains(where: { $0.id == shortMessageID }), "shortMessageID must refer to a message, __random__ or __none__")
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(longMessageID) || messages.contains(where: { $0.id == longMessageID }), "longMessageID must refer to a message, __random__ or __none__")
         try check([BuiltinVisual.randomID, BuiltinVisual.noneID].contains(visualID) || (BuiltinVisual(rawValue: visualID) != nil && !excludedVisualIDs.contains(visualID)), "visualID must name an available visual, __random__ or __none__")
-        for path in [mediaPath, soundPath].compactMap({ $0 }) {
+        for path in [mediaPath, soundPath, musicPath].compactMap({ $0 }) {
             try check(!path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !path.contains("\0"),
                       "file paths must be nonempty local paths")
             try check(!path.contains("://"), "remote URLs are not supported")
@@ -243,6 +281,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs, excludedVisualIDs
         case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
+        case excludedSoundIDs, musicID, musicPath, musicVolume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
     }
 
@@ -290,6 +329,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         soundEnabled = try value(.soundEnabled, soundEnabled)
         soundName = try value(.soundName, soundName)
         volume = try value(.volume, volume)
+        excludedSoundIDs = try value(.excludedSoundIDs, excludedSoundIDs)
+        musicID = try value(.musicID, musicID)
+        musicPath = try values.decodeIfPresent(String.self, forKey: .musicPath)
+        musicVolume = try value(.musicVolume, musicVolume)
+        if ["Tink", "Ping", "Purr", "Pop", "Blow"].contains(soundName) { soundName = "Glass" }
         messages = try value(.messages, messages)
         messages = messages.map { message in
             var migrated = message

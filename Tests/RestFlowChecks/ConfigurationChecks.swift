@@ -234,7 +234,7 @@ func configurationChecks() -> [(String, () -> Void)] {
             settings.prealertEnabled = false
             settings.warningSeconds = 11
             settings.soundEnabled = false
-            settings.soundName = "Ping"
+            settings.soundName = "Glass"
             settings.soundPath = "sounds/提醒 🎵.wav"
             settings.volume = 0.23
             settings.breakTransparency = 0.72

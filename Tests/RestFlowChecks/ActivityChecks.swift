@@ -35,8 +35,8 @@ func activityChecks() -> [(String, () -> Void)] {
                 settings.soundName = AppSettings.randomSoundID
                 expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
                 var candidates: [String] = []
-                expectEqual(settings.selectedSound { candidates = $0; return $0.last! }, "Blow")
-                expectEqual(candidates, AppSettings.systemSounds)
+                expectEqual(settings.selectedSound { candidates = $0; return $0.last! }, AppSettings.alertSoundIDs.last!)
+                expectEqual(candidates, AppSettings.alertSoundIDs)
                 expectEqual(settings.hasSound, true)
                 settings.soundName = AppSettings.noSoundID
                 expectEqual(settings.selectedSound(), AppSettings.noSoundID)

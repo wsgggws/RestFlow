@@ -115,11 +115,10 @@ struct SettingsView: View {
                         }
                     }.padding(12)
                 }
-                note(t("修改从下个阶段生效；重新开始可立即应用。", "Changes apply to upcoming phases. Restart to apply now."))
                 GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(t("离开时自动暂停", "Pause when away"), isOn: $model.settings.idleDetectionEnabled)
-                        note(t("闲置 1 分钟暂停，离开满 5 分钟后回来重新专注。阅读或看视频时可关闭。", "Pause after 1 idle minute; start fresh focus after 5 minutes away. Turn off while reading or watching videos."))
+                            .help(t("闲置 1 分钟暂停，满 5 分钟后重新专注；阅读或看视频时可关闭。", "Pause after 1 idle minute; start fresh after 5 minutes. Turn off while reading or watching videos."))
                         Toggle(t("允许延后 3 分钟", "Allow a 3-minute delay"), isOn: $model.settings.deferEnabled)
                     }.padding(10)
                 }
@@ -190,8 +189,10 @@ struct SettingsView: View {
                         if let error = model.mediaError {
                             Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
                         }
+                        Divider()
+                        musicControls
                     }.padding(10)
-                } label: { Text(t("图片与动画", "Images & animation")) }
+                } label: { Text(t("动画", "Animation")) }
                 feedbackContent
             }.padding(12)
         }
@@ -219,40 +220,81 @@ struct SettingsView: View {
                 set: { if $0 != "__custom__" { model.selectVisual($0) } })
     }
 
+    private var musicControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Picker(t("背景音乐", "Background music"), selection: Binding(
+                    get: { model.settings.musicPath == nil ? model.settings.musicID : "__custom__" },
+                    set: { model.selectMusic($0) })) {
+                    Text(t("无", "None")).tag(AppSettings.noSoundID)
+                    Text(t("跟随动画", "Match animation")).tag(BackgroundTrack.matchedID)
+                    Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
+                    ForEach(BackgroundTrack.allCases, id: \.rawValue) { track in
+                        Text(track.title(in: model.settings.language)).tag(track.rawValue)
+                    }
+                    if model.settings.musicPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
+                }
+                Button(t("导入…", "Import…")) { model.importSound(background: true) }
+            }
+            if let path = model.settings.musicPath {
+                Text(model.musicURL?.lastPathComponent ?? path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            HStack {
+                Image(systemName: "speaker.wave.2")
+                Slider(value: $model.settings.musicVolume, in: 0...1).accessibilityLabel(t("背景音乐音量", "Music volume"))
+                Text("\(Int((model.settings.musicVolume * 100).rounded()))%").monospacedDigit().frame(width: 38, alignment: .trailing)
+                Button(t("试听", "Preview audio")) { model.previewMusic() }
+                    .disabled(model.musicURL == nil || model.settings.musicVolume == 0 || model.musicError != nil)
+            }
+            if let error = model.musicError {
+                Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
+            }
+        }
+    }
+
     private var feedbackContent: some View {
             VStack(alignment: .leading, spacing: 14) {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
                         Toggle(t("工作结束前提醒我", "Remind me before a break"), isOn: $model.settings.prealertEnabled)
-                        durationRow(t("提前时间", "Lead time"), value: $model.settings.warningSeconds, range: 3...120, step: 1, unit: t("秒", "sec"))
-                            .disabled(!model.settings.prealertEnabled)
-                        HStack {
-                            Text(model.notificationStatus).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Button(t("允许通知…", "Allow notifications…")) { model.requestNotifications() }
+                        if model.settings.prealertEnabled {
+                            durationRow(t("提前时间", "Lead time"), value: $model.settings.warningSeconds, range: 3...120, step: 1, unit: t("秒", "sec"))
+                            if model.notificationAuthorization != .authorized && model.notificationAuthorization != .provisional {
+                                HStack {
+                                    Text(model.notificationStatus).font(.caption).foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(t("允许通知…", "Allow notifications…")) { model.requestNotifications() }
+                                }
+                            }
                         }
-                        note(t("系统专注模式可能隐藏通知；这不影响计时和休息界面。",
-                               "System Focus may hide notifications. The timer and break display continue to work."))
-                    }.padding(12)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
                 } label: { Label(t("休息预告", "Break prealert"), systemImage: "bell") }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
-                        Picker(t("系统提示音", "System sound"), selection: Binding(
+                        Picker(t("提示音", "Alert sound"), selection: Binding(
                             get: { !model.settings.soundEnabled ? AppSettings.noSoundID : (model.settings.soundPath == nil ? model.settings.soundName : "__custom__") },
                             set: { model.selectSound($0) })) {
                             Text(t("无", "None")).tag(AppSettings.noSoundID)
                             Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
-                            ForEach(AppSettings.systemSounds, id: \.self) { Text($0).tag($0) }
+                            ForEach(model.settings.availableSounds, id: \.rawValue) { tone in
+                                Text(tone.title(in: model.settings.language)).tag(tone.rawValue)
+                            }
                             if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
                         }
                         HStack {
+                            if !model.settings.excludedSoundIDs.isEmpty {
+                                Button(t("恢复内置提示音", "Restore built-in sounds")) { model.settings.excludedSoundIDs = [] }
+                            }
                             if let path = model.settings.soundPath {
                                 Text(model.soundURL?.lastPathComponent ?? path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
+                            deleteButton(t("移除当前提示音", "Hide selected sound"), disabled: !model.settings.soundEnabled || (model.settings.soundPath == nil && AlertTone(rawValue: model.settings.soundName) == nil)) {
+                                model.hideSelectedSound()
+                            }
                             Button(t("导入声音…", "Import sound…")) { model.importSound() }
                             if model.settings.soundPath != nil {
-                                Button(t("使用系统声音", "Use system sound")) { model.settings.soundPath = nil }
+                                Button(t("使用内置声音", "Use built-in sound")) { model.settings.soundPath = nil }
                             }
                         }
                         HStack {
@@ -330,10 +372,6 @@ struct SettingsView: View {
                 : t("请输入 1–2000 个字符。文案库最多 100 条。", "Enter 1–2,000 characters. The library holds up to 100 messages.")
             notice.runModal()
         }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
     private func durationRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, unit: String) -> some View {

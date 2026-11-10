@@ -12,6 +12,7 @@ rm -rf "$APP_PATH"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources" "$APP_PATH/Contents/Frameworks"
 cp "$BIN_PATH/RestFlow" "$APP_PATH/Contents/MacOS/RestFlow"
 cp Resources/Info.plist "$APP_PATH/Contents/Info.plist"
+ditto Resources/Audio "$APP_PATH/Contents/Resources/Audio"
 cp Resources/Lottie-LICENSE.txt LICENSE THIRD_PARTY_NOTICES.md "$APP_PATH/Contents/Resources/"
 for LOCALIZATION in Resources/*.lproj; do
     ditto "$LOCALIZATION" "$APP_PATH/Contents/Resources/$(basename "$LOCALIZATION")"
