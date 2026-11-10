@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic synthetic ambient noise, no recordings, notes, or external dependencies."""
+"""Reproducible local soundscapes. Python standard library; no recordings or speech."""
 import math
 import random
 import struct
@@ -9,17 +9,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / 'Resources' / 'Audio'
 RATE = 22050
 SECONDS = 16
-IDS = ['white', 'pink', 'brown', 'lightRain', 'heavyRain', 'ocean', 'wind', 'stream', 'fan', 'leaves', 'fire', 'night']
+IDS = ['train', 'aircraft', 'lightRain', 'ocean', 'wind', 'stream', 'fire', 'night', 'thunder', 'birds', 'cafe', 'keyboard']
+TARGET_RMS = .24
+
 
 def generate(name, seed):
     rng = random.Random(seed)
     b = [0.0] * 7
-    low = slow = brown = crackle = chirp = 0.0
+    low = slow = brown = crackle = band = fire_burst = 0.0
+    drops = []
+    events = []
+    next_event = 0
     values = []
     for i in range(RATE * (SECONDS + 1)):
         t = i / RATE
         white = rng.uniform(-1, 1)
-        # Paul Kellet's pink-noise filter and a leaky integrated brown spectrum.
         b[0] = .99886*b[0] + white*.0555179
         b[1] = .99332*b[1] + white*.0750759
         b[2] = .969*b[2] + white*.153852
@@ -29,40 +33,91 @@ def generate(name, seed):
         pink = (sum(b) + white*.5362)*.11
         b[6] = white*.115926
         brown = .998*brown + white*.035
-        low += .07*(white-low)
-        slow += .004*(white-slow)
+        low += .08*(white-low)
+        slow += .003*(white-slow)
         high = white-low
-        crackle *= .975
-        if rng.random() < .0012: crackle += rng.uniform(.2, .8)
-        if name == 'white': value = white*.3
-        elif name == 'pink': value = pink
-        elif name == 'brown': value = brown
-        elif name == 'lightRain': value = high*.12 + low*.15 + crackle*high*.5
-        elif name == 'heavyRain': value = pink*.8 + high*.15 + crackle*high*.1
-        elif name == 'ocean': value = (pink*.6 + low*.8) * (.55+.4*math.sin(2*math.pi*t/8))
-        elif name == 'wind': value = brown*(.6+.3*math.sin(2*math.pi*t/5.3)) + slow*1.2
-        elif name == 'stream': value = low*.8 + high*.12*(.65+.35*math.sin(2*math.pi*t*3.1))
-        elif name == 'fan': value = low*.8 + brown*.3 + pink*.12*(1+.1*math.sin(2*math.pi*t*24))
-        elif name == 'leaves': value = high*.2*(.5+.4*math.sin(2*math.pi*t/3.8)) + low*.12
-        elif name == 'fire': value = brown*.3 + crackle*high*.8 + low*.1
-        else:
-            # Noise-band insect texture rather than pitched musical notes.
-            chirp += .65*(white-chirp)
-            value = (white-chirp)*(.12+.7*max(0, math.sin(2*math.pi*t*2.3))**6) + pink*.04
+        band += .6*(white-band)
+        crackle *= .95
+        if rng.random() < .0008: crackle += rng.uniform(.2, .8)
+        if name == 'train':
+            wheel = max(0, math.sin(2*math.pi*t*2.7))**18
+            wheel2 = max(0, math.sin(2*math.pi*(t-.065)*2.7))**18
+            value = brown*.4 + low*.25 + (wheel+wheel2)*low*1.5
+        elif name == 'aircraft':
+            value = brown*.9 + slow*.8 + .018*math.sin(2*math.pi*78*t) + low*.07
+        elif name == 'lightRain':
+            if rng.random() < .0018: drops.append([0, rng.uniform(1700, 4200), rng.uniform(.04, .18)])
+            drop = 0
+            for event in drops:
+                age, freq, amp = event
+                drop += amp*math.exp(-age/(RATE*.012))*math.sin(2*math.pi*freq*age/RATE)
+                event[0] += 1
+            drops = [e for e in drops if e[0] < RATE*.08]
+            value = high*.035 + low*.03 + drop
+        elif name == 'ocean':
+            surge = (.5+.5*math.sin(2*math.pi*t/8))**2
+            value = (low*.6 + pink*.25)*(0.25+surge) + high*.1*surge
+        elif name == 'wind':
+            gust = .5+.25*math.sin(2*math.pi*t/5.3)+.2*math.sin(2*math.pi*t/2.1)
+            value = brown*.8*gust + .06*math.sin(2*math.pi*(270*t+12*math.sin(t)))*gust + slow*.2
+        elif name == 'stream':
+            value = low*.35 + high*.04 + .07*math.sin(2*math.pi*(420*t+80*math.sin(t*3.2)))*(.5+.5*math.sin(t*17))
+        elif name == 'fire':
+            fire_burst *= .997
+            if rng.random() < .00010: fire_burst += rng.uniform(.3, 1.0)
+            value = brown*.015 + low*.012 + fire_burst*high*.8
+        elif name == 'night':
+            chorus = max(0, math.sin(2*math.pi*t*3.8))**8
+            value = .07*math.sin(2*math.pi*3800*t)*chorus + (white-band)*.09*chorus + pink*.008
+        elif name == 'thunder':
+            rumble = sum(math.exp(-((t-center)/width)**2) for center, width in [(3.5, 1.3), (11.2, 2.0)])
+            value = pink*.12 + brown*rumble*2 + slow*rumble
+        elif name == 'birds':
+            if i >= next_event:
+                events.append([0, rng.uniform(1700, 3400), rng.uniform(.08, .18)])
+                next_event = i+int(rng.uniform(.25, 1.1)*RATE)
+            chirp = 0
+            for event in events:
+                age, freq, amp = event; elapsed = age/RATE
+                chirp += amp*math.sin(math.pi*min(1, elapsed/.16))**2*math.sin(2*math.pi*(freq*elapsed+2200*elapsed**2))
+                event[0] += 1
+            events = [e for e in events if e[0] < RATE*.16]
+            value = pink*.015 + chirp
+        elif name == 'cafe':
+            # Filtered, syllable-rate murmur without intelligible speech, plus ceramic taps.
+            murmur = sum(math.sin(2*math.pi*f*t + 3*math.sin(t*rate))*(.5+.5*math.sin(t*rate*2)) for f, rate in [(137, 2.1), (213, 2.7), (317, 3.3)])
+            value = low*.12 + murmur*.018 + crackle*.025*math.sin(2*math.pi*2300*t)
+        elif name == 'keyboard':
+            if i >= next_event:
+                events.append([0, rng.uniform(600, 1600), rng.uniform(.1, .25)])
+                next_event = i+int(rng.choice([.08, .12, .17, .23, .48])*RATE)
+            tap = 0
+            for event in events:
+                age, freq, amp = event
+                tap += amp*math.exp(-age/(RATE*.012))*(math.sin(2*math.pi*freq*age/RATE)+high*.4)
+                event[0] += 1
+            events = [e for e in events if e[0] < RATE*.075]
+            value = pink*.012 + tap
         values.append(value)
-    # Overlap the final second with the initial second, leaving an exact 16 s loop.
-    overlap = RATE
-    for i in range(overlap):
-        weight = .5-.5*math.cos(math.pi*i/(overlap-1))
+    for i in range(RATE):
+        weight = .5-.5*math.cos(math.pi*i/(RATE-1))
         values[i] = values[RATE*SECONDS+i]*(1-weight) + values[i]*weight
     values = values[:RATE*SECONDS]
     mean = sum(values)/len(values)
     values = [v-mean for v in values]
-    scale = .45/max(abs(v) for v in values)
+    # Equal RMS rather than peak-only normalization: transient-rich rain/fire stays audible.
+    # Smooth saturation contains sparse transients without hard digital clipping.
+    lo, hi = 0.0, 1000.0
+    for _ in range(24):
+        gain = (lo+hi)/2
+        rms = math.sqrt(sum((.92*math.tanh(v*gain/.92))**2 for v in values)/len(values))
+        if rms < TARGET_RMS: lo = gain
+        else: hi = gain
+    samples = [round(.92*math.tanh(v*hi/.92)*32767) for v in values]
     with wave.open(str(ROOT / f'noise-{name}.wav'), 'wb') as out:
         out.setparams((1, 2, RATE, 0, 'NONE', 'not compressed'))
-        out.writeframes(struct.pack('<%dh' % len(values), *(round(v*scale*32767) for v in values)))
+        out.writeframes(struct.pack('<%dh' % len(samples), *samples))
 
 if __name__ == '__main__':
     ROOT.mkdir(parents=True, exist_ok=True)
-    for index, name in enumerate(IDS): generate(name, 20261110+index)
+    for index, name in enumerate(IDS): generate(name, 20261115+sum((i+1)*ord(c) for i, c in enumerate(name)))

@@ -7,21 +7,28 @@ public enum AlertTone: String, CaseIterable, Sendable {
 }
 
 public enum FocusNoise: String, CaseIterable, Sendable {
-    case white, pink, brown, lightRain, heavyRain, ocean, wind, stream, fan, leaves, fire, night
+    case train, aircraft, lightRain, ocean, wind, stream, fire, night, thunder, birds, cafe, keyboard
     public func title(in language: AppLanguage) -> String {
         switch self {
-        case .white: return language.text("白噪音", "White noise")
-        case .pink: return language.text("粉噪音", "Pink noise")
-        case .brown: return language.text("棕噪音", "Brown noise")
-        case .lightRain: return language.text("细雨", "Light rain")
-        case .heavyRain: return language.text("大雨", "Heavy rain")
-        case .ocean: return language.text("海浪", "Ocean")
-        case .wind: return language.text("风声", "Wind")
-        case .stream: return language.text("溪流", "Stream")
-        case .fan: return language.text("风扇", "Fan")
-        case .leaves: return language.text("树叶", "Leaves")
-        case .fire: return language.text("炉火", "Fire")
-        case .night: return language.text("夜虫", "Night insects")
+        case .train: return language.text("夜行列车", "Night train")
+        case .aircraft: return language.text("飞机客舱", "Aircraft cabin")
+        case .lightRain: return language.text("窗边细雨", "Window rain")
+        case .ocean: return language.text("沙滩海浪", "Ocean surf")
+        case .wind: return language.text("旷野风声", "Open-field wind")
+        case .stream: return language.text("山间溪流", "Mountain stream")
+        case .fire: return language.text("壁炉柴火", "Fireplace")
+        case .night: return language.text("夏夜虫鸣", "Summer crickets")
+        case .thunder: return language.text("远处雷雨", "Distant thunder")
+        case .birds: return language.text("林间鸟鸣", "Forest birds")
+        case .cafe: return language.text("街角咖啡馆", "Corner cafe")
+        case .keyboard: return language.text("书房键盘", "Study keyboard")
         }
+    }
+
+    public static func migrate(_ ids: [String]) -> [String] {
+        let replacements = ["white": "lightRain", "pink": "train", "brown": "aircraft",
+                            "heavyRain": "lightRain", "fan": "aircraft", "leaves": "wind"]
+        var seen = Set<String>()
+        return ids.map { replacements[$0] ?? $0 }.filter { seen.insert($0).inserted }
     }
 }

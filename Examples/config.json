@@ -106,6 +106,7 @@
   "focusNoiseEnabled": false,
   "focusNoiseIDs": [],
   "focusNoiseRandom": false,
+  "focusNoiseRandomCount": 1,
   "focusNoiseVolume": 0.3,
   "focusNoiseShortcut": null
 }

@@ -97,6 +97,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var focusNoiseEnabled = false
     public var focusNoiseIDs: [String] = []
     public var focusNoiseRandom = false
+    public var focusNoiseRandomCount = 1
     public var focusNoiseVolume = 0.3
     public var volume: Double = 0.5
     public var messages = ReminderMessage.defaults
@@ -209,14 +210,24 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return true
     }
 
-    /// Random is one extra layer; fixed layers and the previous random are avoided when possible.
-    public func randomFocusNoise(avoiding previous: String? = nil,
-                                 choose: ([String]) -> String = { $0.randomElement()! }) -> String? {
-        guard focusNoiseRandom else { return nil }
-        let pool = FocusNoise.allCases.map(\.rawValue).filter { !focusNoiseIDs.contains($0) }
-        let alternatives = pool.filter { $0 != previous }
-        let candidates = alternatives.isEmpty ? pool : alternatives
-        return candidates.isEmpty ? nil : choose(candidates)
+    /// Draw a unique random mix, preferring sounds outside the previous segment's mix.
+    public func randomFocusNoises(avoiding previous: [String] = [],
+                                  choose: ([String]) -> String = { $0.randomElement()! }) -> [String] {
+        guard focusNoiseRandom else { return [] }
+        var pool = FocusNoise.allCases.map(\.rawValue)
+        var result: [String] = []
+        for _ in 0..<min(focusNoiseRandomCount, pool.count) {
+            let alternatives = pool.filter { !previous.contains($0) }
+            let selected = choose(alternatives.isEmpty ? pool : alternatives)
+            result.append(selected); pool.removeAll { $0 == selected }
+        }
+        return result
+    }
+
+    public mutating func selectRandomFocusNoise(_ selected: Bool) {
+        focusNoiseRandom = selected
+        focusNoiseIDs = []
+        focusNoiseEnabled = selected
     }
 
     public mutating func toggleFocusNoise() {
@@ -237,6 +248,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try check(Set(excludedSoundIDs).count == excludedSoundIDs.count && excludedSoundIDs.allSatisfy { AlertTone(rawValue: $0) != nil }, "Excluded sounds must name unique alert tones")
         try check([Self.noSoundID, Self.randomSoundID].contains(soundName) || availableSounds.contains { $0.rawValue == soundName }, "soundName must name an available alert tone, __none__ or __random__")
         try check(Set(focusNoiseIDs).count == focusNoiseIDs.count && focusNoiseIDs.allSatisfy { FocusNoise(rawValue: $0) != nil }, "focusNoiseIDs must name unique built-in noises")
+        try check((1...FocusNoise.allCases.count).contains(focusNoiseRandomCount), "focusNoiseRandomCount must be within 1...12")
+        try check(!focusNoiseRandom || focusNoiseIDs.isEmpty, "Random focus noise and manual selections are exclusive")
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -281,7 +294,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs, excludedVisualIDs
         case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, focusNoiseShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
-        case excludedSoundIDs, focusNoiseEnabled, focusNoiseIDs, focusNoiseRandom, focusNoiseVolume
+        case excludedSoundIDs, focusNoiseEnabled, focusNoiseIDs, focusNoiseRandom, focusNoiseRandomCount, focusNoiseVolume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
     }
 
@@ -332,8 +345,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
         volume = try value(.volume, volume)
         excludedSoundIDs = try value(.excludedSoundIDs, excludedSoundIDs)
         focusNoiseEnabled = try value(.focusNoiseEnabled, focusNoiseEnabled)
-        focusNoiseIDs = try value(.focusNoiseIDs, focusNoiseIDs)
+        let storedNoiseIDs = try value(.focusNoiseIDs, focusNoiseIDs)
+        // Migration may merge an old ID with its new equivalent; reject genuine duplicates first.
+        guard Set(storedNoiseIDs).count == storedNoiseIDs.count else {
+            throw ConfigurationError.invalid("focusNoiseIDs must name unique built-in noises")
+        }
+        focusNoiseIDs = FocusNoise.migrate(storedNoiseIDs)
+        guard focusNoiseIDs.allSatisfy({ FocusNoise(rawValue: $0) != nil }) else {
+            throw ConfigurationError.invalid("focusNoiseIDs must name built-in soundscapes")
+        }
         focusNoiseRandom = try value(.focusNoiseRandom, focusNoiseRandom)
+        focusNoiseRandomCount = try value(.focusNoiseRandomCount, focusNoiseRandomCount)
+        if focusNoiseRandom { focusNoiseIDs = [] }
         focusNoiseVolume = try value(.focusNoiseVolume, focusNoiseVolume)
         // Retired music keys are accepted but never saved or repurposed as focus noise.
         let retired = ["dew", "wood", "bowl", "pebble", "windbell", "sprout", "ripple", "starlight", "bamboo", "dawn", "hush"]

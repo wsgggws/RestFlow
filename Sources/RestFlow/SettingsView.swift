@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var updates: UpdateChecker
     let preview: () -> Void
+    @StateObject private var noiseChoices = NoiseChoicesState()
     private let accent = Color(red: 0.14, green: 0.57, blue: 0.42)
     private func t(_ zh: String, _ en: String) -> String { model.text(zh, en) }
 
@@ -224,22 +225,19 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(t("启用白噪音", "Enable white noise"), isOn: Binding(
                 get: { model.settings.focusNoiseEnabled }, set: { _ in model.toggleFocusNoise() }))
-            DisclosureGroup(t("声音选择", "Noise selection")) {
+            HStack {
+                DisclosureGroup(t("声音选择", "Noise selection"), isExpanded: $noiseChoices.expanded) { EmptyView() }
+                Spacer()
+                Toggle(t("随机", "Random"), isOn: Binding(
+                    get: { model.settings.focusNoiseRandom },
+                    set: { model.settings.selectRandomFocusNoise($0) })).fixedSize()
+                Stepper(value: $model.settings.focusNoiseRandomCount, in: 1...FocusNoise.allCases.count) {
+                    Text(t("混合 \(model.settings.focusNoiseRandomCount) 种", "Mix \(model.settings.focusNoiseRandomCount)"))
+                        .monospacedDigit()
+                }.fixedSize().disabled(!model.settings.focusNoiseRandom)
+            }
+            if noiseChoices.expanded {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Button(t("无", "None")) {
-                            var updated = model.settings
-                            updated.focusNoiseIDs = []; updated.focusNoiseRandom = false; updated.focusNoiseEnabled = false
-                            model.settings = updated
-                        }
-                        Toggle(t("随机 · 每段专注换一种", "Random · changes each focus"), isOn: Binding(
-                            get: { model.settings.focusNoiseRandom }, set: { value in
-                                var updated = model.settings
-                                updated.focusNoiseRandom = value
-                                updated.focusNoiseEnabled = value || !updated.focusNoiseIDs.isEmpty
-                                model.settings = updated
-                            }))
-                    }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), alignment: .leading, spacing: 10) {
                         ForEach(FocusNoise.allCases, id: \.rawValue) { noise in
                             Toggle(noise.title(in: model.settings.language), isOn: Binding(
@@ -247,9 +245,9 @@ struct SettingsView: View {
                                     var updated = model.settings
                                     updated.focusNoiseIDs.removeAll { $0 == noise.rawValue }
                                     if selected { updated.focusNoiseIDs.append(noise.rawValue) }
-                                    updated.focusNoiseEnabled = updated.focusNoiseRandom || !updated.focusNoiseIDs.isEmpty
+                                    updated.focusNoiseEnabled = !updated.focusNoiseIDs.isEmpty
                                     model.settings = updated
-                                }))
+                                })).disabled(model.settings.focusNoiseRandom)
                         }
                     }
                 }.padding(.top, 8)
@@ -399,3 +397,5 @@ struct SettingsView: View {
         }
     }
 }
+
+private final class NoiseChoicesState: ObservableObject { @Published var expanded = false }

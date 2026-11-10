@@ -81,8 +81,8 @@ final class AppModel: ObservableObject {
     @Published var soundError: String?
     @Published private(set) var focusNoiseError: String?
     private(set) var resolvedNoiseIDs: [String] = []
-    private(set) var randomNoiseID: String?
-    private var previousRandomNoiseID: String?
+    private(set) var randomNoiseIDs: [String] = []
+    private var previousRandomNoiseIDs: [String] = []
     private var noiseFocusToken: String?
     private var noiseRandomWasEnabled = false
     let focusNoise: FocusNoisePlayer
@@ -553,14 +553,14 @@ final class AppModel: ObservableObject {
     private func synchronizeFocusNoise() {
         // Preview temporarily borrows the timer; keep the original focus's selection and playhead.
         let newSegment = noiseFocusToken != focusToken
-        let invalidRandom = randomNoiseID.map { settings.focusNoiseIDs.contains($0) } ?? true
-        if newSegment || settings.focusNoiseRandom != noiseRandomWasEnabled || (settings.focusNoiseRandom && invalidRandom) {
-            randomNoiseID = settings.randomFocusNoise(avoiding: previousRandomNoiseID)
-            if let randomNoiseID { previousRandomNoiseID = randomNoiseID }
+        let invalidRandom = settings.focusNoiseRandom && randomNoiseIDs.count != settings.focusNoiseRandomCount
+        if newSegment || settings.focusNoiseRandom != noiseRandomWasEnabled || invalidRandom {
+            randomNoiseIDs = settings.randomFocusNoises(avoiding: previousRandomNoiseIDs)
+            if !randomNoiseIDs.isEmpty { previousRandomNoiseIDs = randomNoiseIDs }
             noiseFocusToken = focusToken
             noiseRandomWasEnabled = settings.focusNoiseRandom
         }
-        resolvedNoiseIDs = settings.focusNoiseIDs + (randomNoiseID.map { [$0] } ?? [])
+        resolvedNoiseIDs = settings.focusNoiseRandom ? randomNoiseIDs : settings.focusNoiseIDs
         let retainMix = settings.focusNoiseEnabled && (phase == .work || isPreview)
         let running = retainMix && !isPreview && !isPaused && !isAway && !isOutsideOperatingHours && !screenLocked
         let error = focusNoise.sync(ids: retainMix ? resolvedNoiseIDs : [], volume: settings.focusNoiseVolume, running: running)
