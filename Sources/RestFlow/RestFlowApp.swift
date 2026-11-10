@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var phaseMenuItem: NSMenuItem?
+    private var noiseMenu: FocusNoiseMenu?
+    private var noiseToggleMenuItem: NSMenuItem?
     private var screenObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -93,7 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         UserDefaults.standard.set(true, forKey: "hasLaunched")
         if CommandLine.arguments.contains("--preview") { breakWindows.preview() }
-
+        // Expose the exact status menu for UI regression with an isolated --config-dir.
+        if args.contains("--debug-menu") {
+            showSettings()
+            let button = NSButton(title: "Status menu (debug)", target: self, action: #selector(showDebugMenu(_:)))
+            button.frame = NSRect(x: 20, y: 8, width: 180, height: 28)
+            settingsWindow?.contentView?.addSubview(button)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -133,6 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // A changing tooltip can linger at the pointer; keep the countdown in the menu instead.
         statusItem.button?.toolTip = nil
         phaseMenuItem?.title = model.menuStatusText
+        noiseToggleMenuItem?.state = model.settings.focusNoiseEnabled ? .on : .off
+        noiseMenu?.refresh()
         statusItem.button?.setAccessibilityValue(model.menuStatusText)
     }
 
@@ -148,11 +158,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
         addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
         addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
-        addItem(model.text("启用白噪音", "Enable white noise"), action: #selector(toggleFocusNoise),
-                shortcut: model.settings.focusNoiseShortcut, checked: model.settings.focusNoiseEnabled, to: menu)
         if model.settings.deferEnabled && !model.phase.isBreak {
             addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
         }
+        addItem(model.text("启用白噪音", "Enable white noise"), action: #selector(toggleFocusNoise),
+                shortcut: model.settings.focusNoiseShortcut, checked: model.settings.focusNoiseEnabled, to: menu)
+        noiseToggleMenuItem = menu.items.last
+        let choices = FocusNoiseMenu(model: model) { [weak self] in self?.showConfigurationErrorIfNeeded() }
+        let choicesItem = NSMenuItem(title: model.text("更换白噪音", "Change white noise"), action: nil, keyEquivalent: "")
+        choicesItem.submenu = choices.menu
+        menu.addItem(choicesItem)
+        noiseMenu = choices
         if model.phase.isBreak { addItem(model.text("提前结束休息", "End break"), action: #selector(endBreak), to: menu) }
         menu.addItem(.separator())
         addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
@@ -182,6 +198,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func toggleFocusNoise() { model.toggleFocusNoise(); showConfigurationErrorIfNeeded() }
+    @objc private func showDebugMenu(_ sender: NSButton) {
+        guard let menu = statusItem.menu else { return }
+        menuWillOpen(menu)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
+    }
     @objc private func deferBreak() { model.deferBreak() }
     @objc private func restNow() { breakWindows.restNow() }
     @objc private func togglePause() { model.togglePause() }
@@ -293,6 +314,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         check(item(#selector(toggleFocusNoise))?.state == .off &&
               (try? ConfigurationStore(directory: directory).load(orCreate: settings).focusNoiseEnabled) == false,
               "native noise action disables and persists the unchecked preference")
+        let restIndex = menu.items.firstIndex { $0.action == #selector(restNow) }!
+        check(menu.items[restIndex + 1].action == #selector(deferBreak) &&
+              menu.items[restIndex + 2].action == #selector(toggleFocusNoise) &&
+              menu.items[restIndex + 3].submenu === delegate.noiseMenu?.menu,
+              "menu orders Rest now, Delay, Enable noise, and Change noise")
+        let noiseMenu = delegate.noiseMenu!.menu
+        check(noiseMenu.items.filter { !$0.isSeparatorItem }.count == 13,
+              "hover submenu contains Random and exactly twelve specific noises")
+        check(noiseMenu.items.allSatisfy { $0.action == nil },
+              "submenu controls own clicks without duplicate menu-item actions that close tracking")
+        func selectNoise(_ id: String) {
+            let selected = noiseMenu.items.first { $0.representedObject as? String == id }!
+            (selected.view as! NoiseMenuRow).button.performClick(nil)
+        }
+        func noiseState(_ id: String) -> NSControl.StateValue? {
+            noiseMenu.items.first { $0.representedObject as? String == id }?.state
+        }
+        delegate.model.settings.focusNoiseRandomCount = 2
+        selectNoise(AppSettings.randomSoundID)
+        let firstMix = delegate.model.resolvedNoiseIDs
+        check(delegate.model.settings.focusNoiseEnabled && firstMix.count == 2 &&
+              noiseState(AppSettings.randomSoundID) == .on && item(#selector(toggleFocusNoise))?.state == .on,
+              "submenu Random enables noise with the saved mix count and updates parent checkmark")
+        selectNoise(AppSettings.randomSoundID)
+        check(delegate.model.settings.focusNoiseRandomCount == 2 &&
+              Set(firstMix).isDisjoint(with: delegate.model.resolvedNoiseIDs),
+              "clicking checked Random rerolls immediately without changing the saved count")
+        selectNoise("lightRain"); selectNoise("stream")
+        check(!delegate.model.settings.focusNoiseRandom && delegate.model.settings.focusNoiseIDs == ["lightRain", "stream"] &&
+              noiseState("lightRain") == .on && noiseState("stream") == .on && noiseState(AppSettings.randomSoundID) == .off,
+              "submenu controls switch from random to manual and allow consecutive multiselection")
+        selectNoise("lightRain")
+        check(delegate.model.settings.focusNoiseIDs == ["stream"] && noiseState("lightRain") == .off,
+              "clicking a selected specific noise removes only that layer")
+        selectNoise("stream")
+        check(!delegate.model.settings.focusNoiseEnabled && delegate.model.settings.focusNoiseIDs.isEmpty &&
+              item(#selector(toggleFocusNoise))?.state == .off,
+              "deselecting the last noise disables playback and unchecks the parent")
+        check(delegate.noiseMenu?.menu === noiseMenu && noiseMenu.items.first?.view is NoiseMenuRow,
+              "multiple selections retain the same custom controls and native submenu")
+        check((try? ConfigurationStore(directory: directory).load(orCreate: settings).focusNoiseIDs) == [],
+              "submenu changes persist to the isolated configuration")
         delegate.model.settings.focusNoiseShortcut = nil
         delegate.model.togglePause()
         delegate.menuWillOpen(menu)
@@ -362,6 +425,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         delegate.model.settings.language = .english
         delegate.menuWillOpen(menu)
         check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")
+        check(menu.items.contains { $0.title == "Change white noise" } &&
+              delegate.noiseMenu?.menu.items.contains { $0.title == "Distant thunder" } == true,
+              "noise submenu and renamed thunder switch to English with the interface")
         check(delegate.statusItem.button?.toolTip == nil, "tooltip remains absent after phase and language changes")
         return failures == 0 ? 0 : 1
     }

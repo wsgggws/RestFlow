@@ -18,7 +18,7 @@ public enum FocusNoise: String, CaseIterable, Sendable {
         case .stream: return language.text("山间溪流", "Mountain stream")
         case .fire: return language.text("壁炉柴火", "Fireplace")
         case .night: return language.text("夏夜虫鸣", "Summer crickets")
-        case .thunder: return language.text("远处雷雨", "Distant thunder")
+        case .thunder: return language.text("远处雷鸣", "Distant thunder")
         case .birds: return language.text("林间鸟鸣", "Forest birds")
         case .cafe: return language.text("街角咖啡馆", "Corner cafe")
         case .keyboard: return language.text("书房键盘", "Study keyboard")

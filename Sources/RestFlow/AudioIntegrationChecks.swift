@@ -31,6 +31,22 @@ enum AudioIntegrationChecks {
                 for i in 0..<count { peak = max(peak, abs(samples[i])); energy += Double(samples[i]*samples[i]) }
                 check(Double(count)/file.processingFormat.sampleRate == 16 && peak <= 0.921 && (0.23...0.25).contains(sqrt(energy/Double(count))),
                       "16-second soundscape has normalized loudness and unclipped peaks: \(noise.rawValue)")
+                if [.lightRain, .thunder, .keyboard].contains(noise) {
+                    var low: Float = 0, lowEnergy = 0.0, windowEnergy = 0.0, quietWindows = 0
+                    let window = Int(file.processingFormat.sampleRate / 10)
+                    for i in 0..<count {
+                        low += 0.06*(samples[i]-low)
+                        lowEnergy += Double(low*low)
+                        windowEnergy += Double(samples[i]*samples[i])
+                        if (i+1) % window == 0 {
+                            if sqrt(windowEnergy/Double(window)) < 0.02 { quietWindows += 1 }
+                            windowEnergy = 0
+                        }
+                    }
+                    if noise == .lightRain { check(lowEnergy/energy < 0.012, "fine rain emphasizes small high-frequency impacts without a low flowing-water bed") }
+                    if noise == .thunder { check(lowEnergy/energy > 0.45 && quietWindows >= 20, "distant thunder has low rolls with quiet intervals instead of continuous rain") }
+                    if noise == .keyboard { check(quietWindows >= 10, "mechanical typing retains pauses between phrases rather than a continuous tone") }
+                }
                 unique.insert(try Data(contentsOf: url))
             } catch { check(false, "noise asset \(noise): \(error)") }
         }
@@ -55,9 +71,11 @@ enum AudioIntegrationChecks {
                 return (sqrt(energy/Double(frames)), peak)
             }
             let single = try render(["lightRain"], volume: 1)
-            check(single.rms >= 0.20 && single.peak <= 1, "full-volume rain reaches audible RMS through the real engine (RMS=\(single.rms))")
+            check((0.14...0.17).contains(single.rms) && single.peak <= 1, "rain output is reduced by one third through the real engine (RMS=\(single.rms))")
             let half = try render(["lightRain"], volume: 0.25)
             check((0.45...0.60).contains(half.rms/single.rms), "quarter slider provides roughly half amplitude for a more responsive control")
+            let reference = try render(["aircraft"], volume: 1)
+            check((0.15...0.17).contains(reference.rms), "unchanged reference asset measures two-thirds of its former output (RMS=\(reference.rms))")
             let three = try render(["lightRain", "fire", "aircraft"], volume: 1)
             let all = try render(FocusNoise.allCases.map(\.rawValue), volume: 1)
             check(three.rms >= single.rms*0.80 && all.rms >= single.rms*0.80,
@@ -99,11 +117,11 @@ enum AudioIntegrationChecks {
             func playingCount() -> Int { outputs.values.flatMap { $0 }.filter(\.isPlaying).count }
             let windowRain = outputs["lightRain"]!.last!, aircraft = outputs["aircraft"]!.last!
             check(playingCount() == 2 && app.randomNoiseIDs.isEmpty, "manual selections play exactly two layers")
-            check(abs(windowRain.volume - Float(sqrt(0.3 / 2))) < 0.001, "equal-power mix retains loudness across manual layers")
+            check(abs(windowRain.volume - Float((2.0/3.0)*sqrt(0.3 / 2))) < 0.001, "equal-power mix applies the one-third amplitude reduction")
             advance(1); app.settings.language = .english; app.refresh()
             check(windowRain.plays == 1, "refresh and language changes retain manual playheads")
             app.settings.focusNoiseVolume = 0.6
-            check(abs(windowRain.volume-Float(sqrt(0.6 / 2))) < 0.001 && windowRain.plays == 1, "independent volume changes retain playheads")
+            check(abs(windowRain.volume-Float((2.0/3.0)*sqrt(0.6 / 2))) < 0.001 && windowRain.plays == 1, "independent volume changes retain playheads")
             app.togglePause(); check(playingCount() == 0, "manual pause freezes every noise layer")
             app.togglePause(); check(playingCount() == 2 && windowRain.plays == 2, "resume reuses the same players")
             app.willSleep(); check(playingCount() == 0, "sleep pauses focus noise")
@@ -155,6 +173,13 @@ enum AudioIntegrationChecks {
             var external = accepted; external.volume = 0.41
             let data = try ConfigurationStore.encode(external)
             try data.write(to: app.configuration.fileURL, options: .atomic)
+            let acceptedMix = app.resolvedNoiseIDs
+            app.rerollFocusNoise()
+            check(app.settings == accepted && app.resolvedNoiseIDs == acceptedMix,
+                  "failed submenu random save preserves the current random draw")
+            app.toggleFocusNoiseSelection(.stream)
+            check(app.settings == accepted && app.resolvedNoiseIDs == acceptedMix,
+                  "failed submenu selection preserves settings and current mix")
             app.settings.selectRandomFocusNoise(false)
             check(app.settings == accepted && playingCount() == 3 && (try? Data(contentsOf: app.configuration.fileURL)) == data,
                   "failed random toggle preserves mix and external configuration")
@@ -188,7 +213,7 @@ enum AudioIntegrationChecks {
             check(playingCount() == 12 && Set(app.resolvedNoiseIDs).count == 12,
                   "random count twelve creates twelve distinct players")
             let totalPower = outputs.values.flatMap { $0 }.filter(\.isPlaying).reduce(Float(0)) { $0 + $1.volume * $1.volume }
-            check(abs(totalPower - 0.3) < 0.001, "all-layer mix retains the same power budget")
+            check(abs(totalPower - 0.3*4/9) < 0.001, "all-layer mix retains the reduced power budget")
             app.stop(); check(playingCount() == 0, "shutdown releases all audio outputs")
         } catch { check(false, "noise lifecycle: \(error)") }
         var loads = 0

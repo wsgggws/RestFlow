@@ -31,3 +31,5 @@ work/
 outputs/
 *.log
 *.tmp
+__pycache__/
+*.pyc

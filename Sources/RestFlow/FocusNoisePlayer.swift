@@ -87,9 +87,9 @@ final class FocusNoisePlayer {
         self.makeOutput = makeOutput; self.graph = graph
     }
 
-    /// Equal-power layers retain perceived loudness as the mix grows. The shared limiter catches peaks.
+    /// Equal-power layers, with a 2/3 master amplitude (-3.52 dB). The limiter catches summed peaks.
     static func layerVolume(_ volume: Double, count: Int) -> Float {
-        Float(sqrt(max(0, min(1, volume))) / sqrt(Double(max(1, count))))
+        Float((2.0 / 3.0) * sqrt(max(0, min(1, volume))) / sqrt(Double(max(1, count))))
     }
 
     @discardableResult

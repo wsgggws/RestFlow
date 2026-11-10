@@ -229,7 +229,7 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-t
 | `focusNoiseIDs` | `[]` | 多选固定声，不能重复，不支持导入路径 |
 | `focusNoiseRandom` | `false` | 随机模式，与手选互斥，开启时清空手选项 |
 | `focusNoiseRandomCount` | `1` | 每段随机混合 `1...12` 种不同声景 |
-| `focusNoiseVolume` | `0.3` | `0...1`，独立音量；平方根响应与等功率混音，仍受系统音量影响 |
+| `focusNoiseVolume` | `0.3` | `0...1`，独立音量；平方根响应与等功率混音，输出为 0.15.0 的 2/3 幅度，仍受系统音量影响 |
 | `focusNoiseShortcut` | `null` | 可选快捷键，使用与其他操作相同的冲突校验 |
 
 “声音选择”右侧直接提供随机开关与混合数量，默认 1；无需展开列表。勾选随机会立即清空手选并禁用下方勾选，取消随机后保持空白，用户可以重新手选；取消随机时停止声音，手选后重新启用。总开关关闭保留当前模式与数量，再开启时恢复。
@@ -244,12 +244,12 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-t
 | `stream` | 山间溪流 |
 | `fire` | 壁炉柴火 |
 | `night` | 夏夜虫鸣 |
-| `thunder` | 远处雷雨 |
+| `thunder` | 远处雷鸣 |
 | `birds` | 林间鸟鸣 |
 | `cafe` | 街角咖啡馆 |
 | `keyboard` | 书房键盘 |
 
-全部为本地合成声景，环境名称表示声音风格，无外部录音及网络请求。每种素材平均响度归一；平方根音量曲线让中低段调节更明显，等功率混音避免多选时整体越来越小，系统峰值限制器控制叠加瞬态。0 仍完全静音。白噪音设置不修改系统音量，不影响提示音音量。
+全部音频内置于应用，播放无需联网。溪流、虫鸣和机械键盘使用授权录音，其余为合成声景；出处及编辑方式见音频资源说明。每种素材平均响度归一；平方根音量曲线让中低段调节更明显，等功率混音避免多选时整体越来越小，系统峰值限制器控制叠加瞬态。0 仍完全静音。白噪音设置不修改系统音量，不影响提示音音量。
 
 每段随机抽取不重复的指定数量，优先避开上段组合；数量接近总数时允许部分重叠，全选时组合相同。调整数量立即重选。计时刷新、语言切换、音量调整、屏幕热插拔、暂停与预览保持当前组合。白噪音不参与休息全屏或预告通知的判断。
 
@@ -265,6 +265,8 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --config-dir /tmp/restflow-test --ui-t
 ```
 
 上例每段随机混合 3 种声景，⌃⌥N 切换总开关。默认快捷键留空。手选时设 `focusNoiseRandom: false`，例如 `focusNoiseIDs: ["lightRain", "fire"]`。
+
+菜单“更换白噪音”在悬停时展开，提供随机及 12 个声音。点击随机使用当前 `focusNoiseRandomCount`，每次点击重新抽取；点击具体声音退出随机并勾选／取消，可连续多选，最后一项取消后自动关闭总开关。鼠标选择时保留子菜单及当前状态，移到其他主菜单项或按 Esc 收起。`thunder` 的显示名为“远处雷鸣”，ID 保持兼容。声景的授权来源及处理过程见 `Resources/Audio/README.md`。
 
 旧 `white`／`pink`／`brown` 分别迁移为 `lightRain`／`train`／`aircraft`，`heavyRain`／`fan`／`leaves` 分别迁移为 `lightRain`／`aircraft`／`wind`；相同目标合并去重。原有音量、启用状态及快捷键保留。文件中随机为 true 时清空手选（包括旧版的随机＋固定组合），未指定随机数量时为 1。未知 ID 或原始重复 ID 仍拒绝，不以清空操作掩盖无效配置。
 

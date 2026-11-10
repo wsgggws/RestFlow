@@ -234,6 +234,28 @@ final class AppModel: ObservableObject {
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
     func toggleFocusNoise() { settings.toggleFocusNoise() }
 
+    func toggleFocusNoiseSelection(_ noise: FocusNoise) {
+        var updated = settings
+        updated.focusNoiseRandom = false
+        updated.focusNoiseIDs.removeAll { $0 == noise.rawValue }
+        if !settings.focusNoiseIDs.contains(noise.rawValue) { updated.focusNoiseIDs.append(noise.rawValue) }
+        updated.focusNoiseEnabled = !updated.focusNoiseIDs.isEmpty
+        settings = updated
+    }
+
+    func rerollFocusNoise() {
+        let wasRandom = settings.focusNoiseRandom
+        var updated = settings
+        updated.selectRandomFocusNoise(true)
+        settings = updated
+        // Save first: a file conflict must keep both the accepted settings and current mix.
+        guard configurationError == nil, wasRandom else { return }
+        randomNoiseIDs = settings.randomFocusNoises(avoiding: previousRandomNoiseIDs)
+        previousRandomNoiseIDs = randomNoiseIDs
+        synchronizeFocusNoise()
+        onRefresh?()
+    }
+
     func hideSelectedSound() {
         var updated = settings
         if updated.soundPath != nil {
