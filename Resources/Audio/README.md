@@ -1,29 +1,44 @@
 # Focus soundscapes
 
-Twelve local soundscapes: eleven use licensed recordings; ocean retains its existing synthesis.
-Run `python3 scripts/generate-noise.py` to reproduce all, or pass IDs for a subset.
-Requires Python 3 and ffmpeg. Only this development command downloads source audio,
-cached under `.build/audio-sources` and verified by SHA-256 on every use.
-`FieldRecordings.json` pins the eight new scenes' sources, licenses, hashes and excerpt edits;
-`scripts/audio_sources.py` pins the three existing recording inputs.
-The app and normal build are entirely offline.
+All twelve local soundscapes use licensed real recordings. Run
+`python3 scripts/generate-noise.py` to reproduce all, or pass IDs for a subset.
+Requires Python 3 and ffmpeg. Only this development command downloads source audio;
+inputs are cached under `.build/audio-sources` and SHA-256 verified on every use.
+`FieldRecordings.json` pins nine scenes' sources, licenses, hashes and edit parameters;
+`scripts/audio_sources.py` pins stream, night and keyboard. The app and normal build
+are completely offline.
 
-The eight new loops are 25–48 seconds, stereo PCM 16-bit / 44.1 kHz, preserving spatial
-information where present in the original recording. Traffic joins two passes with a
-half-second overlap, removing the source's silent gap. Fire combines real flame and
-crackle recordings. Other scenes use continuous excerpts. Each has a one-second
-raised-cosine loop overlap, 30 Hz high-pass / 14 kHz low-pass filtering and DC removal.
-A constant gain targets RMS 0.20 (thunder 0.10), followed by a 5 ms look-ahead / 80 ms
-release peak limiter at 0.92. Stereo channels share gain; brief transients reduce local
-gain without waveshaping the whole waveform. Circular pre-roll/look-ahead preserves the seam.
-Natural dynamics mean final RMS varies between scenes. Thunder retains actual cracks,
-rolls, rain and quiet gaps; lightning itself has no sound.
-Ocean, stream, night and keyboard remain byte-identical to 0.16.0: 16 seconds,
-mono PCM 16-bit / 22.05 kHz, original overlap and RMS 0.24 normalization.
-Runtime mixes equal power, maps the volume slider through a square-root curve, applies a
-2/3 amplitude master gain (−3.52 dB relative to 0.15.0), and uses a shared system peak limiter.
-Stereo playback compensates for the shared graph’s mono center-gain restoration.
-macOS alert sounds are loaded from the system and are not redistributed.
+## Editing and playback
+
+Nine loops use stereo PCM 16-bit / 44.1 kHz, preserving the original spatial image
+where present. Most last 48 seconds; traffic lasts 25 seconds and thunder 18 seconds.
+Traffic joins two passes with a 0.5-second overlap, removing the silent gap.
+Each scene uses a one-second raised-cosine loop overlap, filtering, DC removal and
+constant stereo-linked gain, followed by a 5 ms look-ahead / 80 ms release peak
+limiter at 0.92. Circular pre-roll/look-ahead keeps the limiter stable across the seam.
+The gain targets RMS 0.20 (thunder 0.22); final RMS varies with natural dynamics.
+Stream, night and keyboard retain their 0.16.0 mono 16-second / 22.05 kHz loops,
+original RMS 0.24 normalization and bytes.
+
+0.18.0 changes:
+- **沙滩海浪 / ocean**: close recording of waves breaking on Boscombe Beach, UK;
+  the source's actual surf replaces the old noise synthesis.
+- **柴火燃烧 / fire**: continuous close wood-stove recording replaces the former
+  sizzling/pop layers. A mild 140 Hz bass lift supports the flame body; 11.5 kHz
+  low-pass reduces hiss. No artificial crackles or fire-like noise are synthesized.
+- **电闪雷鸣 / thunder**: removes the long quiet introduction/tail, uses 18-second
+  circulation, 120 Hz bass lift and higher scene gain. Rotate the continuous loop
+  so the first strong crack occurs within 300 ms; retain real rolling thunder.
+  Lightning itself has no sound. This is an intentionally forceful scene.
+- **人声鼎沸 / cafe**: Mandarin-speaking park/mahjong crowd is the primary recording,
+  with a quieter Mandarin/Quebecois restaurant layer (0.70 relative RMS). Removes
+  the previous English-only UK studio crowd. Speech language is documented by the
+  original recordist, not inferred from automated waveform tests.
+
+Runtime uses equal-power mixing, a square-root volume slider and a 2/3 amplitude
+master gain (−3.52 dB relative to 0.15.0), followed by a shared system peak limiter.
+Stereo playback compensates the graph's mono center-gain restoration. No system
+volume setting is changed. macOS alert sounds are not redistributed.
 
 ## Recording credits
 
@@ -37,21 +52,22 @@ Stream and summer-night input files are distributed by [Blanket at bbc88ed3](htt
 which documents the recording licenses separately from its application code. No Blanket code is included.
 The Mechvibes MIT license is included alongside these files as `Mechvibes-LICENSE.txt`.
 
-## New field-recording credits (0.17.0)
+## Stereo field-recording credits
 
-These are edited HQ preview recordings, redistributed under the licenses below.
-All edits are described above and in the bundled manifest. CC0 dedicates to the public
-domain; the frogs recording is CC BY 4.0 and requires attribution, a license link and
-identification of modifications. No endorsement by the authors is implied.
+The following edited HQ previews are redistributed under their original licenses.
+CC0 dedicates to the public domain; CC BY 4.0 requires attribution, license links and
+identification of modifications. Edits are documented above and in the manifest.
+No endorsement by any author is implied.
 
-| Output / input | Original / author | Source | License |
+| Output | Original / author | Source | License |
 | --- | --- | --- | --- |
 | 街头车流 / train | Medium Traffic — **IENBA** | [Original](https://freesound.org/people/IENBA/sounds/865147/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 池塘蛙鸣 / aircraft | lizzie frogs long.wav — **volivieri** | [Original](https://freesound.org/people/volivieri/sounds/634612/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 | 庭院落雨 / lightRain | Rain_Falling_On_Ground.wav — **ivolipa** | [Original](https://freesound.org/people/ivolipa/sounds/329113/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 狂风呼啸 / wind | Wind blowing in a field in Texas, USA — **felix.blume** | [Original](https://freesound.org/people/felix.blume/sounds/217506/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| 篝火噼啪 / fire (flame bed) | bonfire flames sizzling — **florianreichelt** | [Original](https://freesound.org/people/florianreichelt/sounds/563764/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| 篝火噼啪 / fire (crackles) | fire crackles — **florianreichelt** | [Original](https://freesound.org/people/florianreichelt/sounds/563766/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 林间鸟鸣 / birds | Bird ambience. Coniferous forest dawn chorus. — **SamsterBirdies** | [Original](https://freesound.org/people/SamsterBirdies/sounds/745273/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| 人声鼎沸 / cafe | 5 min of crowd chatter.  40 people.wav — **Psykophobia** | [Original](https://freesound.org/people/Psykophobia/sounds/608996/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 电闪雷鸣 / thunder | 2016-10-06 Thunder Crack.wav — **kingsrow** | [Original](https://freesound.org/people/kingsrow/sounds/361772/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| 沙滩海浪 / ocean | Sea - Ocean - Beach - Close - MP3 — **nebulousflynn** | [Original](https://freesound.org/people/nebulousflynn/sounds/220531/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| 人声鼎沸 / cafe (primary) | park light crowd mahjong players chinese ext walla old men mandarin voices3 NYC, USA.flac — **kyles** | [Original](https://freesound.org/people/kyles/sounds/452973/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| 人声鼎沸 / cafe (secondary) | crowd int medium busy chinese restaurant mandarin and quebecois voices Montreal, Canada.flac — **kyles** | [Original](https://freesound.org/people/kyles/sounds/455717/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| 柴火燃烧 / fire | Wood Burning Stove — **nebulousflynn** | [Original](https://freesound.org/people/nebulousflynn/sounds/269062/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |

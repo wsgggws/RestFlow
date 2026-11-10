@@ -28,7 +28,7 @@ enum AudioIntegrationChecks {
                 let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
                 try file.read(into: buffer)
                 let count = Int(buffer.frameLength), channels = Int(buffer.format.channelCount)
-                let recorded = ![FocusNoise.ocean, .stream, .night, .keyboard].contains(noise)
+                let recorded = ![FocusNoise.stream, .night, .keyboard].contains(noise)
                 let duration = Double(count)/file.processingFormat.sampleRate
                 var peak: Float = 0, energy = 0.0, quietWindows = 0
                 for channel in 0..<channels {
@@ -60,11 +60,22 @@ enum AudioIntegrationChecks {
                 let rms = sqrt(energy/Double(count*channels))
                 assetRMS[noise.rawValue] = rms
                 check(peak <= 0.921 && rms > 0.015 && rms <= 0.25 &&
-                      (recorded ? ((25...48).contains(duration) && channels == 2 && buffer.format.sampleRate == 44100) : duration == 16),
+                      (recorded ? ((18...48).contains(duration) && channels == 2 && buffer.format.sampleRate == 44100) : duration == 16),
                       "soundscape preserves headroom and expected format: \(noise.rawValue) (\(duration)s, RMS=\(rms), peak=\(peak))")
                 if noise == .thunder {
-                    check(Double(peak)/rms > 8 && quietWindows >= 20,
-                          "recorded thunder retains sharp transients and quiet intervals")
+                    var openingPeak: Float = 0, openingEnergy = 0.0
+                    let openingFrames = Int(buffer.format.sampleRate * 0.3)
+                    for channel in 0..<channels {
+                        let samples = buffer.floatChannelData![channel]
+                        for i in 0..<openingFrames {
+                            openingPeak = max(openingPeak, abs(samples[i]))
+                            openingEnergy += Double(samples[i]*samples[i])
+                        }
+                    }
+                    check(openingPeak > 0.5 && sqrt(openingEnergy/Double(openingFrames*channels)) > 0.10,
+                          "strong thunder begins within the first 300 ms without a quiet introduction")
+                    check(Double(peak)/rms > 4 && rms >= 0.10,
+                          "thunder preserves a sharp crack and an audible rolling body")
                 }
                 if noise == .keyboard { check(quietWindows >= 10, "mechanical typing retains pauses between phrases") }
                 unique.insert(try Data(contentsOf: url))
@@ -97,7 +108,7 @@ enum AudioIntegrationChecks {
                   "stereo recording gets the same two-thirds master gain as mono (RMS=\(single.rms))")
             let half = try render(["lightRain"], volume: 0.25)
             check((0.45...0.60).contains(half.rms/single.rms), "quarter slider provides roughly half amplitude for a more responsive control")
-            let reference = try render(["ocean"], volume: 1)
+            let reference = try render(["stream"], volume: 1)
             check((0.15...0.17).contains(reference.rms), "unchanged reference asset measures two-thirds of its former output (RMS=\(reference.rms))")
             let three = try render(["lightRain", "fire", "aircraft"], volume: 1)
             let all = try render(FocusNoise.allCases.map(\.rawValue), volume: 1)

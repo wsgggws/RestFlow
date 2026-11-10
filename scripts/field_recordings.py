@@ -37,9 +37,9 @@ def source_file(key):
     return target
 
 
-def decode(key, start, seconds):
+def decode(key, start, seconds, filters=None):
     raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-ss', str(start), '-i', str(source_file(key)),
-                                  '-t', str(seconds), '-af', 'highpass=f=30,lowpass=f=14000',
+                                  '-t', str(seconds), '-af', filters or 'highpass=f=30,lowpass=f=14000',
                                   '-ar', str(RATE), '-ac', str(CHANNELS), '-f', 'f32le', '-'])
     values = array.array('f'); values.frombytes(raw)
     if sys.byteorder != 'little': values.byteswap()
@@ -67,9 +67,9 @@ def write_recorded_loop(name, root):
         overlap = round(.5*RATE)*CHANNELS
         values = parts[0][:-overlap] + blend(parts[0][-overlap:], parts[1][:overlap], overlap//CHANNELS) + parts[1][overlap:]
     else:
-        values = decode(scene['source'], scene['start'], seconds+1)
-    if 'layer' in scene:
-        layer = scene['layer']
+        values = decode(scene['source'], scene['start'], seconds+1, scene.get('filters'))
+    layers = scene.get('layers', [scene['layer']] if 'layer' in scene else [])
+    for layer in layers:
         extra = decode(layer['source'], layer['start'], seconds+1)
         # Actual flame bed plus actual wood pops, retaining each recording's dynamics.
         bed_rms = math.sqrt(sum(v*v for v in values)/len(values))
@@ -80,13 +80,17 @@ def write_recorded_loop(name, root):
     overlap = RATE*CHANNELS
     values[:overlap] = blend(values[count:count+overlap], values[:overlap], RATE)
     values = values[:count]
+    # Rotate the continuous circular waveform to place the first thunder strike at startup.
+    rotation = round(scene.get('rotateSeconds', 0)*RATE)*CHANNELS
+    if rotation:
+        values = values[rotation:] + values[:rotation]
     # Remove DC, then apply a common stereo gain and a look-ahead peak limiter.
     # Unlike waveshaping, only short loud events attenuate their neighborhood;
     # the original timbre, natural gaps and stereo image are retained.
     means = [sum(values[c::CHANNELS])/(count/CHANNELS) for c in range(CHANNELS)]
     values = array.array('f', (v-means[i%CHANNELS] for i,v in enumerate(values)))
     rms = math.sqrt(sum(v*v for v in values)/count)
-    target_rms = .10 if name == 'thunder' else .20
+    target_rms = scene.get('targetRMS', .20)
     gain = target_rms/rms
     # Warm up the limiter across the circular seam and provide look-ahead at the end.
     values = values[-overlap:] + values + values[:overlap]

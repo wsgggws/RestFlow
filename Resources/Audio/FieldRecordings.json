@@ -36,24 +36,6 @@
       "sourceURL": "https://freesound.org/people/felix.blume/sounds/217506/",
       "license": "https://creativecommons.org/publicdomain/zero/1.0/"
     },
-    "bonfire": {
-      "file": "bonfire-563764.mp3",
-      "url": "https://cdn.freesound.org/previews/563/563764_6253486-hq.mp3",
-      "sha256": "7253438734d3502821b54161b6796260cfa484ae60c0da0cfa7d15ee1d6f5b82",
-      "author": "florianreichelt",
-      "title": "bonfire flames sizzling",
-      "sourceURL": "https://freesound.org/people/florianreichelt/sounds/563764/",
-      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
-    },
-    "fireCrackles": {
-      "file": "fireCrackles-563766.mp3",
-      "url": "https://cdn.freesound.org/previews/563/563766_6253486-hq.mp3",
-      "sha256": "23f8893d6264ea499c6422584ae677fcf4170760669a057fdb0f155f674868b5",
-      "author": "florianreichelt",
-      "title": "fire crackles",
-      "sourceURL": "https://freesound.org/people/florianreichelt/sounds/563766/",
-      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
-    },
     "dawnBirds": {
       "file": "dawnBirds-745273.mp3",
       "url": "https://cdn.freesound.org/previews/745/745273_5487341-hq.mp3",
@@ -61,15 +43,6 @@
       "author": "SamsterBirdies",
       "title": "Bird ambience. Coniferous forest dawn chorus.",
       "sourceURL": "https://freesound.org/people/SamsterBirdies/sounds/745273/",
-      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
-    },
-    "crowd": {
-      "file": "crowd-608996.mp3",
-      "url": "https://cdn.freesound.org/previews/608/608996_10476-hq.mp3",
-      "sha256": "9a3fd2457e6e646bd644f740df4c1e014fc105e521bfd5498fb0e53cdb3021ca",
-      "author": "Psykophobia",
-      "title": "5 min of crowd chatter.  40 people.wav",
-      "sourceURL": "https://freesound.org/people/Psykophobia/sounds/608996/",
       "license": "https://creativecommons.org/publicdomain/zero/1.0/"
     },
     "thunderCrack": {
@@ -80,6 +53,42 @@
       "title": "2016-10-06 Thunder Crack.wav",
       "sourceURL": "https://freesound.org/people/kingsrow/sounds/361772/",
       "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "beachSurf": {
+      "file": "beachSurf-220531.mp3",
+      "url": "https://cdn.freesound.org/previews/220/220531_2962342-hq.mp3",
+      "sha256": "d8f46b936002b197524b5f6dd6281fdc2999452129b164b743865e1f294b848d",
+      "author": "nebulousflynn",
+      "title": "Sea - Ocean - Beach - Close - MP3",
+      "sourceURL": "https://freesound.org/people/nebulousflynn/sounds/220531/",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "chineseVoices": {
+      "file": "chineseVoices-452973.mp3",
+      "url": "https://cdn.freesound.org/previews/452/452973_612689-hq.mp3",
+      "sha256": "87cbc578a4e2296a9a72a19df4ac7b2a65502607d81d671c43e91fe9625316eb",
+      "author": "kyles",
+      "title": "park light crowd mahjong players chinese ext walla old men mandarin voices3 NYC, USA.flac",
+      "sourceURL": "https://freesound.org/people/kyles/sounds/452973/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "chineseRestaurant": {
+      "file": "chineseRestaurant-455717.mp3",
+      "url": "https://cdn.freesound.org/previews/455/455717_612689-hq.mp3",
+      "sha256": "f1dfbdbfa41b487195a57100945ed2805149d3ee83bb36027d4f2f6e30b65591",
+      "author": "kyles",
+      "title": "crowd int medium busy chinese restaurant mandarin and quebecois voices Montreal, Canada.flac",
+      "sourceURL": "https://freesound.org/people/kyles/sounds/455717/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "burningLogs": {
+      "file": "burningLogs-269062.mp3",
+      "url": "https://cdn.freesound.org/previews/269/269062_2962342-hq.mp3",
+      "sha256": "78623c53d766f0d0e2a204c67c79a6ee83435d46eeba75e1b7ccb12c51766c21",
+      "author": "nebulousflynn",
+      "title": "Wood Burning Stove",
+      "sourceURL": "https://freesound.org/people/nebulousflynn/sounds/269062/",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
     }
   },
   "scenes": {
@@ -113,19 +122,18 @@
       "seconds": 48
     },
     "fire": {
-      "source": "bonfire",
-      "start": 0.5,
+      "source": "burningLogs",
+      "start": 12,
       "seconds": 48,
-      "layer": {
-        "source": "fireCrackles",
-        "start": 1,
-        "relativeGain": 0.65
-      }
+      "filters": "highpass=f=35,lowpass=f=11500,bass=g=3:f=140:w=0.8"
     },
     "thunder": {
       "source": "thunderCrack",
-      "start": 0.5,
-      "seconds": 26
+      "start": 7.5,
+      "seconds": 18,
+      "rotateSeconds": 1.05,
+      "targetRMS": 0.22,
+      "filters": "highpass=f=25,lowpass=f=14000,bass=g=4:f=120:w=0.8"
     },
     "birds": {
       "source": "dawnBirds",
@@ -133,8 +141,20 @@
       "seconds": 48
     },
     "cafe": {
-      "source": "crowd",
-      "start": 70,
+      "source": "chineseVoices",
+      "start": 30,
+      "seconds": 48,
+      "layers": [
+        {
+          "source": "chineseRestaurant",
+          "start": 20,
+          "relativeGain": 0.7
+        }
+      ]
+    },
+    "ocean": {
+      "source": "beachSurf",
+      "start": 10,
       "seconds": 48
     }
   }

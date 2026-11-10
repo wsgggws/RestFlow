@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible focus soundscapes. Eleven recorded soundscapes; one deterministic ocean synthesis.
+"""Reproducible focus soundscapes. Twelve soundscapes from licensed recordings.
 
 Python standard library plus ffmpeg. See Resources/Audio/README.md for provenance.
 """
@@ -25,31 +25,7 @@ def generate(name, seed):
     rng = random.Random(seed)
     if name in SOURCES:
         return write_loop(name, recorded_values(name, rng, RATE, SECONDS))
-    b = [0.0] * 7
-    low = slow = brown = crackle = band = 0.0
-    values = []
-    for i in range(RATE * (SECONDS + 1)):
-        t = i / RATE
-        white = rng.uniform(-1, 1)
-        b[0] = .99886*b[0] + white*.0555179
-        b[1] = .99332*b[1] + white*.0750759
-        b[2] = .969*b[2] + white*.153852
-        b[3] = .8665*b[3] + white*.3104856
-        b[4] = .55*b[4] + white*.5329522
-        b[5] = -.7616*b[5] - white*.016898
-        pink = (sum(b) + white*.5362)*.11
-        b[6] = white*.115926
-        brown = .998*brown + white*.035
-        low += .08*(white-low)
-        slow += .003*(white-slow)
-        high = white-low
-        band += .6*(white-band)
-        crackle *= .95
-        if rng.random() < .0008: crackle += rng.uniform(.2, .8)
-        surge = (.5+.5*math.sin(2*math.pi*t/8))**2
-        value = (low*.6 + pink*.25)*(0.25+surge) + high*.1*surge
-        values.append(value)
-    write_loop(name, values)
+    raise ValueError(f'Missing recording scene: {name}')
 
 
 def write_loop(name, values):
