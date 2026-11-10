@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             case .pause: self?.togglePause()
             case .restart: self?.restart()
             case .restNow: self?.restNow()
+            case .focusNoise: self?.toggleFocusNoise()
             }
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -147,6 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
         addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
         addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
+        addItem(model.text("启用白噪音", "Enable white noise"), action: #selector(toggleFocusNoise),
+                shortcut: model.settings.focusNoiseShortcut, checked: model.settings.focusNoiseEnabled, to: menu)
         if model.settings.deferEnabled && !model.phase.isBreak {
             addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
         }
@@ -178,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(item)
     }
 
+    @objc private func toggleFocusNoise() { model.toggleFocusNoise(); showConfigurationErrorIfNeeded() }
     @objc private func deferBreak() { model.deferBreak() }
     @objc private func restNow() { breakWindows.restNow() }
     @objc private func togglePause() { model.togglePause() }
@@ -275,6 +279,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if let selected = item(action) { _ = NSApp.sendAction(action, to: selected.target, from: selected) }
             delegate.menuWillOpen(menu)
         }
+        check(item(#selector(toggleFocusNoise))?.state == .off, "white noise menu toggle defaults to unchecked")
+        delegate.model.togglePause() // Exercise preferences without playing audible diagnostic noise.
+        click(#selector(toggleFocusNoise))
+        check(item(#selector(toggleFocusNoise))?.state == .on && delegate.model.settings.focusNoiseRandom,
+              "native noise menu action enables and checks a default random mix")
+        delegate.model.settings.focusNoiseShortcut = RestFlowCore.KeyboardShortcut(keyCode: 45, modifiers: 6144)
+        delegate.menuWillOpen(menu)
+        check(item(#selector(toggleFocusNoise))?.keyEquivalent == "n" &&
+              item(#selector(toggleFocusNoise))?.keyEquivalentModifierMask == [.control, .option],
+              "noise menu item renders the configured native keyboard modifiers")
+        click(#selector(toggleFocusNoise))
+        check(item(#selector(toggleFocusNoise))?.state == .off &&
+              (try? ConfigurationStore(directory: directory).load(orCreate: settings).focusNoiseEnabled) == false,
+              "native noise action disables and persists the unchecked preference")
+        delegate.model.settings.focusNoiseShortcut = nil
+        delegate.model.togglePause()
+        delegate.menuWillOpen(menu)
         check(item(#selector(deferBreak))?.isEnabled == true, "menu offers a single three-minute delay during running focus")
         click(#selector(deferBreak))
         check(delegate.model.timeText == "28:00" && item(#selector(deferBreak))?.isEnabled == false,

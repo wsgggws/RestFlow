@@ -45,14 +45,6 @@ final class AppModel: ObservableObject {
                 settings.excludedVisualIDs != oldValue.excludedVisualIDs {
                 prepareBreakContent()
             }
-            if settings.musicID != oldValue.musicID || settings.musicPath != oldValue.musicPath || settings.mediaPath != oldValue.mediaPath {
-                feedback.stop()
-                prepareMusic()
-            }
-            if settings.musicVolume != oldValue.musicVolume { feedback.stop() }
-            if settings.musicPath != oldValue.musicPath || settings.musicID != oldValue.musicID || settings.language != oldValue.language {
-                validateMusic()
-            }
             if settings.soundName != oldValue.soundName || settings.soundPath != oldValue.soundPath || settings.excludedSoundIDs != oldValue.excludedSoundIDs {
                 feedback.stop()
             }
@@ -87,11 +79,13 @@ final class AppModel: ObservableObject {
     @Published var configurationError: String?
     @Published var mediaError: String?
     @Published var soundError: String?
-    @Published var musicError: String?
-    private var musicValidationError: String?
-    private(set) var resolvedMusicID = AppSettings.noSoundID
-    private var previousMusicID: String?
-    let music: BackgroundMusicPlayer
+    @Published private(set) var focusNoiseError: String?
+    private(set) var resolvedNoiseIDs: [String] = []
+    private(set) var randomNoiseID: String?
+    private var previousRandomNoiseID: String?
+    private var noiseFocusToken: String?
+    private var noiseRandomWasEnabled = false
+    let focusNoise: FocusNoisePlayer
     @Published private(set) var mediaIsValid = true
     let shortcuts = ShortcutController()
     let loginItem: any LoginItemManaging
@@ -118,11 +112,11 @@ final class AppModel: ObservableObject {
     private let clock: () -> TimeInterval
     private var now: TimeInterval { clock() }
 
-    init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil, music: BackgroundMusicPlayer? = nil,
+    init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil, focusNoise: FocusNoisePlayer? = nil,
          idleSeconds: (() -> TimeInterval)? = nil,
          wallClock: @escaping () -> Date = Date.init,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
-        self.music = music ?? BackgroundMusicPlayer()
+        self.focusNoise = focusNoise ?? FocusNoisePlayer()
         self.clock = clock
         self.idleSeconds = idleSeconds ?? (directory == nil ? {
             CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
@@ -145,7 +139,6 @@ final class AppModel: ObservableObject {
         settings = loaded
         let initialContent = BreakContent(settings: loaded)
         breakContent = initialContent
-        resolvedMusicID = loaded.resolveMusic(visual: initialContent.visual)
         engine = SessionEngine(plan: loaded.plan, now: clock())
         phase = engine.phase
         remaining = loaded.plan.workDuration
@@ -167,7 +160,6 @@ final class AppModel: ObservableObject {
         breakContent = BreakContent(settings: settings, avoidingMessageID: lastShownMessageID, avoidingVisual: lastShownVisual)
         lastShownMessageID = engine.phase == .longBreak ? breakContent.longMessageID : breakContent.shortMessageID
         lastShownVisual = breakContent.visual
-        prepareMusic()
     }
 
     func previewBreak() {
@@ -240,22 +232,7 @@ final class AppModel: ObservableObject {
     }
     var mediaURL: URL? { configuration.resolve(settings.mediaPath) }
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
-    var musicURL: URL? {
-        if let path = settings.musicPath { return configuration.resolve(path) }
-        return AudioAssets.musicURL(resolvedMusicID)
-    }
-
-    private func prepareMusic() {
-        resolvedMusicID = settings.resolveMusic(visual: breakContent.visual, avoiding: previousMusicID)
-        if resolvedMusicID != AppSettings.noSoundID { previousMusicID = resolvedMusicID }
-    }
-
-    func selectMusic(_ id: String) {
-        guard id != "__custom__" else { return }
-        var updated = settings
-        updated.musicID = id; updated.musicPath = nil
-        settings = updated
-    }
+    func toggleFocusNoise() { settings.toggleFocusNoise() }
 
     func hideSelectedSound() {
         var updated = settings
@@ -266,7 +243,6 @@ final class AppModel: ObservableObject {
         feedback.stop()
     }
 
-    func previewMusic() { feedback.previewMusic(url: musicURL, volume: settings.musicVolume) }
     var menuStatusText: String {
         if isPreview { return text("预览：", "Preview: ") + timeText }
         if isAway { return text("已离开 · 计时暂停", "Away · Timer paused") }
@@ -301,7 +277,6 @@ final class AppModel: ObservableObject {
         refreshNotificationStatus()
         validateMedia()
         validateSound()
-        validateMusic()
         refresh()
     }
 
@@ -317,7 +292,7 @@ final class AppModel: ObservableObject {
         lockObservers.forEach { DistributedNotificationCenter.default().removeObserver($0) }
         lockObservers.removeAll()
         feedback.stop()
-        music.stop()
+        focusNoise.stop()
         feedback.clearNotification()
         shortcuts.stop()
     }
@@ -477,17 +452,17 @@ final class AppModel: ObservableObject {
         if settings.mediaPath == nil { MediaStore.removeManaged(path: path) }
     }
 
-    func importSound(background: Bool = false) {
+    func importSound() {
         let panel = NSOpenPanel()
-        panel.title = background ? text("选择背景音乐", "Choose background music") : text("选择提示音", "Choose a sound")
+        panel.title = text("选择提示音", "Choose a sound")
         panel.allowedContentTypes = [.wav, .aiff, .mp3, .mpeg4Audio]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let source = panel.url else { return }
-        do { try importAudio(from: source, background: background) }
+        do { try importAudio(from: source) }
         catch { configurationError = error.localizedDescription }
     }
 
-    func importAudio(from source: URL, background: Bool) throws {
+    func importAudio(from source: URL) throws {
         guard (try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 20 * 1024 * 1024,
               (try? AVAudioPlayer(contentsOf: source)) != nil else {
             throw ConfigurationError.invalid(text("声音无效或超过 20 MB。", "The sound is invalid or larger than 20 MB."))
@@ -498,10 +473,9 @@ final class AppModel: ObservableObject {
         let destination = folder.appendingPathComponent(name)
         try FileManager.default.copyItem(at: source, to: destination)
         var updated = settings
-        if background { updated.musicPath = "sounds/\(name)" }
-        else { updated.soundPath = "sounds/\(name)"; updated.soundEnabled = true }
+        updated.soundPath = "sounds/\(name)"; updated.soundEnabled = true
         settings = updated
-        if (background ? settings.musicPath : settings.soundPath) != "sounds/\(name)" {
+        if settings.soundPath != "sounds/\(name)" {
             try? FileManager.default.removeItem(at: destination)
             throw ConfigurationError.invalid(configurationError ?? text("声音未保存。", "Sound was not saved."))
         }
@@ -564,18 +538,6 @@ final class AppModel: ObservableObject {
         soundError = valid ? nil : text("声音无法读取，请检查 soundPath 或 soundName。", "Unable to read sound. Check soundPath or soundName.")
     }
 
-    private func validateMusic() {
-        musicValidationError = nil
-        if let path = settings.musicPath {
-            let url = configuration.resolve(path)!
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max
-            if size > 20 * 1024 * 1024 || (try? AVAudioPlayer(contentsOf: url)) == nil {
-                musicValidationError = text("背景音乐无法读取或超过 20 MB。", "Background music is unreadable or larger than 20 MB.")
-            }
-        }
-        musicError = musicValidationError
-    }
-
     private func publish(at current: TimeInterval) {
         canDefer = settings.deferEnabled && !isPreview && !isAway && !isOutsideOperatingHours &&
             engine.phase == .work && !engine.isPaused && !engine.didDefer && engine.remaining(at: current) > 0
@@ -584,19 +546,26 @@ final class AppModel: ObservableObject {
         remaining = engine.remaining(at: current)
         completedWorkSessions = engine.completedWorkSessions
         progress = max(0, min(1, 1 - remaining / engine.phaseDuration))
-        synchronizeMusic()
+        synchronizeFocusNoise()
         onRefresh?()
     }
 
-    private func synchronizeMusic() {
-        let active = phase.isBreak && (isPreview || !isOutsideOperatingHours) && !screenLocked
-        let url = active ? musicURL : nil
-        if let error = musicValidationError {
-            music.stop(); if musicError != error { musicError = error }; return
+    private func synchronizeFocusNoise() {
+        // Preview temporarily borrows the timer; keep the original focus's selection and playhead.
+        let newSegment = noiseFocusToken != focusToken
+        let invalidRandom = randomNoiseID.map { settings.focusNoiseIDs.contains($0) } ?? true
+        if newSegment || settings.focusNoiseRandom != noiseRandomWasEnabled || (settings.focusNoiseRandom && invalidRandom) {
+            randomNoiseID = settings.randomFocusNoise(avoiding: previousRandomNoiseID)
+            if let randomNoiseID { previousRandomNoiseID = randomNoiseID }
+            noiseFocusToken = focusToken
+            noiseRandomWasEnabled = settings.focusNoiseRandom
         }
-        let error = music.sync(url: url, volume: settings.musicVolume, running: !isPaused)
-        let message = error.map { text("背景音乐无法播放：", "Unable to play background music: ") + $0 }
-        if musicError != message { musicError = message }
+        resolvedNoiseIDs = settings.focusNoiseIDs + (randomNoiseID.map { [$0] } ?? [])
+        let retainMix = settings.focusNoiseEnabled && (phase == .work || isPreview)
+        let running = retainMix && !isPreview && !isPaused && !isAway && !isOutsideOperatingHours && !screenLocked
+        let error = focusNoise.sync(ids: retainMix ? resolvedNoiseIDs : [], volume: settings.focusNoiseVolume, running: running)
+        let message = error.map { text("白噪音无法播放：", "Unable to play focus noise: ") + $0 }
+        if focusNoiseError != message { focusNoiseError = message }
     }
 
     func willSleep() {

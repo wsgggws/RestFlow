@@ -5,29 +5,13 @@ import RestFlowCore
 @MainActor
 final class FeedbackService {
     private var playingSound: NSSound?
-    private var musicSample: NSSound?
-    private var sampleStop: Task<Void, Never>?
-
     static func alertSound(_ id: String) -> NSSound? {
-        if id == "Glass" { return NSSound(named: "Glass") }
-        return AudioAssets.alertURL(id).flatMap { NSSound(contentsOf: $0, byReference: false) }
-    }
-
-    func previewMusic(url: URL?, volume: Double) {
-        musicSample?.stop(); sampleStop?.cancel()
-        guard let url, volume > 0, let sound = NSSound(contentsOf: url, byReference: false) else { return }
-        musicSample = sound
-        sound.volume = Float(volume)
-        sound.play()
-        sampleStop = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled else { return }
-            self?.musicSample?.stop()
-        }
+        guard AppSettings.systemSounds.contains(id) else { return nil }
+        return NSSound(named: NSSound.Name(id))
     }
 
     func play(settings: AppSettings, customURL: URL?) {
-        playingSound?.stop(); musicSample?.stop(); sampleStop?.cancel()
+        playingSound?.stop()
         guard settings.hasSound else { return }
         let selected: NSSound?
         if let customURL { selected = NSSound(contentsOf: customURL, byReference: false) }
@@ -38,7 +22,7 @@ final class FeedbackService {
         sound.play()
     }
 
-    func stop() { playingSound?.stop(); musicSample?.stop(); sampleStop?.cancel() }
+    func stop() { playingSound?.stop() }
 
     nonisolated static let deferAction = "restflow.defer"
     nonisolated static let deferCategory = "restflow.prealert.actions"

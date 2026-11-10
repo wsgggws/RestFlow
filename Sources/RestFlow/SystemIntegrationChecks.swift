@@ -65,6 +65,14 @@ enum SystemIntegrationChecks {
             print("PASS original bindings survive failed replacement")
             settings.restNowShortcut = nil
             try controller.apply(settings)
+            settings.restartShortcut = nil; settings.focusNoiseShortcut = chord
+            try controller.apply(settings); received = nil; try dispatch(chord)
+            guard received == .focusNoise else { throw ConfigurationError.invalid("White noise hotkey invoked wrong action") }
+            print("PASS white noise Carbon shortcut dispatch")
+            controller.isSuspended = true; received = nil; try dispatch(chord)
+            guard received == nil else { throw ConfigurationError.invalid("Break did not suspend white noise shortcut") }
+            controller.isSuspended = false
+            print("PASS break input guard suspends white noise shortcut")
             print("PASS macOS modifier display: \(ShortcutController.label(chord))")
             print("PASS login-item status read: \(LoginItemController().status.rawValue)")
             return 0

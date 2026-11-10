@@ -65,7 +65,7 @@ public enum ContentStyle: String, Codable, CaseIterable, Sendable {
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let noSoundID = "__none__"
     public static let randomSoundID = "__random__"
-    public static let systemSounds = ["Glass"]
+    public static let systemSounds = AlertTone.allCases.map(\.rawValue)
     public static let alertSoundIDs = AlertTone.allCases.map(\.rawValue)
     public var operatingSchedule = OperatingSchedule()
     public var idleDetectionEnabled = true
@@ -83,6 +83,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var pauseShortcut: KeyboardShortcut?
     public var restartShortcut: KeyboardShortcut?
     public var restNowShortcut: KeyboardShortcut?
+    public var focusNoiseShortcut: KeyboardShortcut?
     public var workMinutes: Double = 25
     public var shortBreakSeconds: Double = 30
     public var longBreakMinutes: Double = 5
@@ -93,9 +94,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var soundName = "Glass"
     public var soundPath: String?
     public var excludedSoundIDs: [String] = []
-    public var musicID = BuiltinVisual.noneID
-    public var musicPath: String?
-    public var musicVolume = 0.3
+    public var focusNoiseEnabled = false
+    public var focusNoiseIDs: [String] = []
+    public var focusNoiseRandom = false
+    public var focusNoiseVolume = 0.3
     public var volume: Double = 0.5
     public var messages = ReminderMessage.defaults
     public var shortMessageID = "eyes"
@@ -207,25 +209,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return true
     }
 
-    public func resolveMusic(visual: BuiltinVisual, avoiding: String? = nil,
-                             choose: ([String]) -> String = { $0.randomElement()! }) -> String {
-        if musicPath != nil { return "__custom__" }
-        if musicID == BackgroundTrack.matchedID {
-            return hasVisual && mediaPath == nil ? visual.rawValue : Self.noSoundID
-        }
-        if musicID == Self.randomSoundID {
-            let alternatives = BackgroundTrack.allCases.map(\.rawValue).filter { $0 != avoiding }
-            return choose(alternatives)
-        }
-        return musicID
+    /// Random is one extra layer; fixed layers and the previous random are avoided when possible.
+    public func randomFocusNoise(avoiding previous: String? = nil,
+                                 choose: ([String]) -> String = { $0.randomElement()! }) -> String? {
+        guard focusNoiseRandom else { return nil }
+        let pool = FocusNoise.allCases.map(\.rawValue).filter { !focusNoiseIDs.contains($0) }
+        let alternatives = pool.filter { $0 != previous }
+        let candidates = alternatives.isEmpty ? pool : alternatives
+        return candidates.isEmpty ? nil : choose(candidates)
     }
 
-    public var hasMusic: Bool {
-        musicVolume > 0 && (musicPath != nil || (musicID == BackgroundTrack.matchedID ? hasVisual && mediaPath == nil : musicID != Self.noSoundID))
+    public mutating func toggleFocusNoise() {
+        focusNoiseEnabled.toggle()
+        if focusNoiseEnabled && focusNoiseIDs.isEmpty && !focusNoiseRandom { focusNoiseRandom = true }
     }
 
     public func shouldPrealert(for phase: SessionPhase) -> Bool {
-        phase.isBreak && prealertEnabled && (showsBreakScreen(for: phase) || hasSound || hasMusic)
+        phase.isBreak && prealertEnabled && (showsBreakScreen(for: phase) || hasSound)
     }
 
     public func validate() throws {
@@ -236,7 +236,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try check(Set(excludedVisualIDs).count == excludedVisualIDs.count && excludedVisualIDs.allSatisfy { BuiltinVisual(rawValue: $0) != nil }, "Excluded visuals must name unique built-in scenes")
         try check(Set(excludedSoundIDs).count == excludedSoundIDs.count && excludedSoundIDs.allSatisfy { AlertTone(rawValue: $0) != nil }, "Excluded sounds must name unique alert tones")
         try check([Self.noSoundID, Self.randomSoundID].contains(soundName) || availableSounds.contains { $0.rawValue == soundName }, "soundName must name an available alert tone, __none__ or __random__")
-        try check([Self.noSoundID, Self.randomSoundID, BackgroundTrack.matchedID].contains(musicID) || BackgroundTrack(rawValue: musicID) != nil, "musicID must name a soundtrack, __none__, __random__ or __matched__")
+        try check(Set(focusNoiseIDs).count == focusNoiseIDs.count && focusNoiseIDs.allSatisfy { FocusNoise(rawValue: $0) != nil }, "focusNoiseIDs must name unique built-in noises")
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -244,12 +244,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
             ("longBreakMinutes", longBreakMinutes, 1.0...120.0),
             ("warningSeconds", warningSeconds, 3.0...120.0),
             ("volume", volume, 0.0...1.0),
-            ("musicVolume", musicVolume, 0.0...1.0),
+            ("focusNoiseVolume", focusNoiseVolume, 0.0...1.0),
             ("breakTransparency", breakTransparency, 0.0...1.0),
         ] {
             try check(value.isFinite && range.contains(value), "\(name) must be within \(range)")
         }
-        let shortcuts = [pauseShortcut, restartShortcut, restNowShortcut].compactMap { $0 }
+        let shortcuts = [pauseShortcut, restartShortcut, restNowShortcut, focusNoiseShortcut].compactMap { $0 }
         for shortcut in shortcuts {
             do { try shortcut.validate() }
             catch { throw ConfigurationError.invalid(language.text("请使用 ⌘、⌃ 或 ⌥ 搭配按键；Esc 用于关闭休息界面。", "Use Command, Control or Option with a key; Esc closes the break screen.")) }
@@ -270,7 +270,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(shortMessageID) || messages.contains(where: { $0.id == shortMessageID }), "shortMessageID must refer to a message, __random__ or __none__")
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(longMessageID) || messages.contains(where: { $0.id == longMessageID }), "longMessageID must refer to a message, __random__ or __none__")
         try check([BuiltinVisual.randomID, BuiltinVisual.noneID].contains(visualID) || (BuiltinVisual(rawValue: visualID) != nil && !excludedVisualIDs.contains(visualID)), "visualID must name an available visual, __random__ or __none__")
-        for path in [mediaPath, soundPath, musicPath].compactMap({ $0 }) {
+        for path in [mediaPath, soundPath].compactMap({ $0 }) {
             try check(!path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !path.contains("\0"),
                       "file paths must be nonempty local paths")
             try check(!path.contains("://"), "remote URLs are not supported")
@@ -279,9 +279,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs, excludedVisualIDs
-        case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
+        case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, focusNoiseShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
-        case excludedSoundIDs, musicID, musicPath, musicVolume
+        case excludedSoundIDs, focusNoiseEnabled, focusNoiseIDs, focusNoiseRandom, focusNoiseVolume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
     }
 
@@ -289,7 +289,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.init()
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try decoder.container(keyedBy: AnyKey.self)
-        let known = Set(CodingKeys.allCases.map(\.rawValue) + ["visualGrayness", "visualOpacity"])
+        let known = Set(CodingKeys.allCases.map(\.rawValue) + ["visualGrayness", "visualOpacity", "musicID", "musicPath", "musicVolume"])
         let unknown = raw.allKeys.map(\.stringValue).filter { !known.contains($0) }
         guard unknown.isEmpty else { throw ConfigurationError.invalid("Unknown setting: \(unknown.sorted().joined(separator: ", "))") }
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
@@ -320,6 +320,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         pauseShortcut = try values.decodeIfPresent(KeyboardShortcut.self, forKey: .pauseShortcut)
         restartShortcut = try values.decodeIfPresent(KeyboardShortcut.self, forKey: .restartShortcut)
         restNowShortcut = try values.decodeIfPresent(KeyboardShortcut.self, forKey: .restNowShortcut)
+        focusNoiseShortcut = try values.decodeIfPresent(KeyboardShortcut.self, forKey: .focusNoiseShortcut)
         workMinutes = try value(.workMinutes, workMinutes)
         shortBreakSeconds = try value(.shortBreakSeconds, shortBreakSeconds)
         longBreakMinutes = try value(.longBreakMinutes, longBreakMinutes)
@@ -330,10 +331,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         soundName = try value(.soundName, soundName)
         volume = try value(.volume, volume)
         excludedSoundIDs = try value(.excludedSoundIDs, excludedSoundIDs)
-        musicID = try value(.musicID, musicID)
-        musicPath = try values.decodeIfPresent(String.self, forKey: .musicPath)
-        musicVolume = try value(.musicVolume, musicVolume)
-        if ["Tink", "Ping", "Purr", "Pop", "Blow"].contains(soundName) { soundName = "Glass" }
+        focusNoiseEnabled = try value(.focusNoiseEnabled, focusNoiseEnabled)
+        focusNoiseIDs = try value(.focusNoiseIDs, focusNoiseIDs)
+        focusNoiseRandom = try value(.focusNoiseRandom, focusNoiseRandom)
+        focusNoiseVolume = try value(.focusNoiseVolume, focusNoiseVolume)
+        // Retired music keys are accepted but never saved or repurposed as focus noise.
+        let retired = ["dew", "wood", "bowl", "pebble", "windbell", "sprout", "ripple", "starlight", "bamboo", "dawn", "hush"]
+        if retired.contains(soundName) { soundName = excludedSoundIDs.contains("Glass") ? Self.noSoundID : "Glass" }
+        excludedSoundIDs.removeAll { retired.contains($0) }
         messages = try value(.messages, messages)
         messages = messages.map { message in
             var migrated = message

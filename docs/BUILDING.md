@@ -12,6 +12,6 @@ open dist/RestFlow.app
 
 本地 Homebrew 构建安装使用 `./scripts/install-brew.sh`，详见 [Homebrew](../Homebrew/README.md)。
 
-内置音频位于 `Resources/Audio`，构建时直接打包；如需重新生成，运行 `python3 scripts/generate-audio.py`（仅用标准库，无外部素材）。
+内置音频位于 `Resources/Audio`，构建时直接打包；如需重新生成，运行 `python3 scripts/generate-noise.py`（仅用标准库，无外部素材）。
 
 [开发约定](../AGENTS.md) · [验证范围](TESTING.md) · [发行流程](RELEASING.md)

@@ -4,7 +4,7 @@ import RestFlowCore
 
 @MainActor
 final class ShortcutController {
-    enum Action: UInt32, CaseIterable { case pause = 1, restart, restNow }
+    enum Action: UInt32, CaseIterable { case pause = 1, restart, restNow, focusNoise }
     private var registrations: [Action: (KeyboardShortcut, EventHotKeyRef)] = [:]
     private var handler: EventHandlerRef?
     private var localMonitor: Any?
@@ -62,7 +62,7 @@ final class ShortcutController {
     func apply(_ settings: AppSettings) throws {
         try settings.validate()
         let desired: [Action: KeyboardShortcut] = [
-            .pause: settings.pauseShortcut, .restart: settings.restartShortcut, .restNow: settings.restNowShortcut
+            .pause: settings.pauseShortcut, .restart: settings.restartShortcut, .restNow: settings.restNowShortcut, .focusNoise: settings.focusNoiseShortcut
         ].compactMapValues { $0 }
         if desired == registrations.mapValues({ $0.0 }) { return }
         guard handler != nil else {

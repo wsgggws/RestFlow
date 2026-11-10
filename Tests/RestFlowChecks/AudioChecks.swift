@@ -3,89 +3,86 @@ import RestFlowCore
 
 func audioChecks() -> [(String, () -> Void)] {
     [
-        ("audio catalog has twelve alert choices and twelve scene soundtracks", {
+        ("audio catalogs contain twelve system alerts and twelve disabled-by-default focus noises", {
             expectEqual(AlertTone.allCases.count, 12)
-            expectEqual(AppSettings.systemSounds, ["Glass"])
-            expectEqual(Set(BackgroundTrack.allCases.map(\.rawValue)), Set(BuiltinVisual.allCases.map(\.rawValue)))
-            expectEqual(AppSettings().musicID, AppSettings.noSoundID)
-            expectEqual(AppSettings().hasMusic, false)
+            expectEqual(AppSettings.systemSounds, AppSettings.alertSoundIDs)
+            expectEqual(Set(FocusNoise.allCases.map(\.rawValue)).count, 12)
+            let s = AppSettings()
+            expectEqual(s.focusNoiseEnabled, false)
+            expectEqual(s.focusNoiseIDs, [])
+            expectEqual(s.focusNoiseRandom, false)
         }),
-        ("retired system sounds migrate to Glass without changing paths or volume", {
+        ("retired audio migrates without enabling noise or removing custom references", {
             do {
-                for name in ["Tink", "Ping", "Purr", "Pop", "Blow"] {
-                    let data = Data("{\"soundName\":\"\(name)\",\"volume\":0.27,\"soundPath\":\"sounds/原音.wav\"}".utf8)
-                    let loaded = try ConfigurationStore.decode(data)
-                    expectEqual(loaded.soundName, "Glass")
-                    expectEqual(loaded.soundPath, "sounds/原音.wav")
-                    expectEqual(loaded.volume, 0.27)
+                let data = Data(#"{"soundName":"wood","soundPath":"sounds/原音.wav","volume":0.27,"excludedSoundIDs":["dew","Ping"],"musicID":"rain","musicPath":"sounds/old.wav","musicVolume":0.5}"#.utf8)
+                let s = try ConfigurationStore.decode(data)
+                expectEqual(s.soundName, "Glass")
+                expectEqual(s.soundPath, "sounds/原音.wav")
+                expectEqual(s.volume, 0.27)
+                expectEqual(s.excludedSoundIDs, ["Ping"])
+                expectEqual(s.focusNoiseEnabled, false)
+                let encoded = String(decoding: try ConfigurationStore.encode(s), as: UTF8.self)
+                expectEqual(encoded.contains("music"), false)
+                let hiddenGlass = try ConfigurationStore.decode(Data(#"{"soundName":"wood","excludedSoundIDs":["Glass"]}"#.utf8))
+                expectEqual(hiddenGlass.soundName, AppSettings.noSoundID)
+                expectEqual(hiddenGlass.excludedSoundIDs, ["Glass"])
+                for name in AppSettings.systemSounds {
+                    let loaded = try ConfigurationStore.decode(Data("{\"soundName\":\"\(name)\"}".utf8))
+                    expectEqual(loaded.soundName, name)
                 }
             } catch { expectEqual(error.localizedDescription, "success") }
         }),
-        ("hidden sounds leave random pool and empty sound libraries remain silent", {
+        ("hidden system sounds leave random pool and empty libraries remain silent", {
             var s = AppSettings()
-            expectEqual(s.hideSound("Glass"), true)
-            expectEqual(s.soundName, AppSettings.noSoundID)
-            expectEqual(s.hideSound("Glass"), false)
-            s.soundName = AppSettings.randomSoundID
-            let selected = s.selectedSound { candidates in
-                expectEqual(candidates.contains("Glass"), false)
-                return candidates.first!
-            }
-            expectEqual(selected, "dew")
+            s.hideSound("Glass"); s.soundName = AppSettings.randomSoundID
+            expectEqual(s.selectedSound { $0.first! }, "Tink")
             for tone in AlertTone.allCases { s.hideSound(tone.rawValue) }
             expectEqual(s.hasSound, false)
             expectEqual(s.selectedSound { _ in fatalError("Empty pools cannot be sampled") }, AppSettings.noSoundID)
             s.soundPath = "sounds/custom.wav"
             expectEqual(s.hasSound, true)
-            s.excludedSoundIDs = []
-            expectEqual(s.availableSounds.count, 12)
         }),
-        ("matching music follows the resolved random scene and respects no visual or imports", {
+        ("random focus noise adds a unique layer and avoids previous segment when possible", {
             var s = AppSettings()
-            s.musicID = BackgroundTrack.matchedID; s.visualID = BuiltinVisual.randomID
-            let scene = BreakContent(settings: s, choose: { $0.last! }).visual
-            expectEqual(s.resolveMusic(visual: scene), scene.rawValue)
-            s.visualID = BuiltinVisual.noneID
-            expectEqual(s.resolveMusic(visual: scene), AppSettings.noSoundID)
-            expectEqual(s.hasMusic, false)
-            s.visualID = "forest"; s.mediaPath = "my.gif"
-            expectEqual(s.resolveMusic(visual: .forest), AppSettings.noSoundID)
-            s.musicPath = "sounds/loop.wav"
-            expectEqual(s.resolveMusic(visual: .forest), "__custom__")
-            expectEqual(s.hasMusic, true)
+            s.focusNoiseIDs = ["white", "pink"]; s.focusNoiseRandom = true
+            expectEqual(s.randomFocusNoise(avoiding: "brown", choose: { $0.first! }), "lightRain")
+            s.focusNoiseIDs = FocusNoise.allCases.dropLast().map(\.rawValue)
+            expectEqual(s.randomFocusNoise(avoiding: "night"), "night")
+            s.focusNoiseIDs = FocusNoise.allCases.map(\.rawValue)
+            expectEqual(s.randomFocusNoise { _ in fatalError("All layers already selected") }, nil)
+            s.focusNoiseRandom = false
+            expectEqual(s.randomFocusNoise(), nil)
         }),
-        ("random music avoids previous track and fixed music remains independent of visuals", {
+        ("menu toggle defaults to random and preserves a chosen mix on disable", {
             var s = AppSettings()
-            s.musicID = AppSettings.randomSoundID
-            expectEqual(s.resolveMusic(visual: .forest, avoiding: "rings", choose: { $0.first! }), "orbit")
-            s.musicID = "waves"; s.visualID = BuiltinVisual.noneID
-            expectEqual(s.resolveMusic(visual: .forest), "waves")
-            expectEqual(s.hasMusic, true)
-            s.musicVolume = 0
-            expectEqual(s.hasMusic, false)
+            s.toggleFocusNoise()
+            expectEqual(s.focusNoiseEnabled && s.focusNoiseRandom, true)
+            s.focusNoiseIDs = ["lightRain"]
+            s.toggleFocusNoise()
+            expectEqual(s.focusNoiseEnabled, false)
+            expectEqual(s.focusNoiseIDs, ["lightRain"])
+            s.toggleFocusNoise()
+            expectEqual(s.focusNoiseIDs, ["lightRain"])
         }),
-        ("audio preferences round-trip with relative paths and reject invalid IDs and ranges", {
+        ("focus audio settings round-trip and reject invalid layers volumes and duplicate shortcuts", {
             do {
                 var s = AppSettings()
-                s.musicPath = "sounds/海浪 🎵.wav"; s.musicID = "rain"; s.musicVolume = 0.22
-                s.hideSound("wood")
+                s.focusNoiseEnabled = true; s.focusNoiseIDs = ["brown", "fire"]
+                s.focusNoiseRandom = true; s.focusNoiseVolume = 0.22
+                s.focusNoiseShortcut = KeyboardShortcut(keyCode: 45, modifiers: 6144)
                 expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(s)), s)
-                let directory = URL(fileURLWithPath: "/tmp/restflow-audio")
-                expectEqual(ConfigurationStore(directory: directory).resolve(s.musicPath)?.path, "/tmp/restflow-audio/sounds/海浪 🎵.wav")
-                let invalid = [#"{"musicVolume":1.1}"#, #"{"musicID":"bad"}"#, #"{"musicPath":"https://example.org/a.wav"}"#,
-                               #"{"excludedSoundIDs":["dew","dew"]}"#, #"{"soundName":"wood","excludedSoundIDs":["wood"]}"#]
-                for raw in invalid {
+                for raw in [#"{"focusNoiseVolume":1.1}"#, #"{"focusNoiseIDs":["bad"]}"#,
+                            #"{"focusNoiseIDs":["white","white"]}"#, #"{"focusNoisePath":"file.wav"}"#,
+                            #"{"pauseShortcut":{"keyCode":45,"modifiers":6144},"focusNoiseShortcut":{"keyCode":45,"modifiers":6144}}"#] {
                     do { _ = try ConfigurationStore.decode(Data(raw.utf8)); expectEqual("accepted", "rejected") } catch { }
                 }
             } catch { expectEqual(error.localizedDescription, "success") }
         }),
-        ("music-only breaks keep prealerts without creating fullscreen content", {
+        ("focus noise never creates rest prealerts or full-screen content", {
             var s = AppSettings()
             s.shortMessageID = ReminderMessage.noneID; s.visualID = BuiltinVisual.noneID
-            s.soundName = AppSettings.noSoundID; s.musicID = "rain"
+            s.soundName = AppSettings.noSoundID; s.focusNoiseEnabled = true; s.focusNoiseIDs = ["white"]
             expectEqual(s.showsBreakScreen(for: .shortBreak), false)
-            expectEqual(s.shouldPrealert(for: .shortBreak), true)
-            s.musicID = AppSettings.noSoundID
             expectEqual(s.shouldPrealert(for: .shortBreak), false)
         })
     ]

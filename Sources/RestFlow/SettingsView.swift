@@ -65,6 +65,7 @@ struct SettingsView: View {
                         shortcutRow(t("暂停／继续计时", "Pause / resume"), keyPath: \.pauseShortcut)
                         shortcutRow(t("重新开始", "Restart"), keyPath: \.restartShortcut)
                         shortcutRow(t("现在休息", "Rest now"), keyPath: \.restNowShortcut)
+                        shortcutRow(t("开启／关闭白噪音", "Toggle white noise"), keyPath: \.focusNoiseShortcut)
                     }.padding(10)
                 } label: { Text(t("快捷键", "Keyboard shortcuts")) }
                 DisclosureGroup(t("高级：配置文件", "Advanced: configuration file")) {
@@ -101,6 +102,7 @@ struct SettingsView: View {
                 GroupBox {
                     VStack(spacing: 18) {
                         durationRow(t("专注", "Focus"), value: $model.settings.workMinutes, range: 1...240, step: 1, unit: t("分钟", "min"))
+                        noiseControls
                         Divider()
                         durationRow(t("短休息", "Short break"), value: $model.settings.shortBreakSeconds, range: 5...1800, step: 5, unit: t("秒", "sec"))
                         Divider()
@@ -189,8 +191,6 @@ struct SettingsView: View {
                         if let error = model.mediaError {
                             Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
                         }
-                        Divider()
-                        musicControls
                     }.padding(10)
                 } label: { Text(t("动画", "Animation")) }
                 feedbackContent
@@ -220,33 +220,48 @@ struct SettingsView: View {
                 set: { if $0 != "__custom__" { model.selectVisual($0) } })
     }
 
-    private var musicControls: some View {
+    private var noiseControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Picker(t("背景音乐", "Background music"), selection: Binding(
-                    get: { model.settings.musicPath == nil ? model.settings.musicID : "__custom__" },
-                    set: { model.selectMusic($0) })) {
-                    Text(t("无", "None")).tag(AppSettings.noSoundID)
-                    Text(t("跟随动画", "Match animation")).tag(BackgroundTrack.matchedID)
-                    Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
-                    ForEach(BackgroundTrack.allCases, id: \.rawValue) { track in
-                        Text(track.title(in: model.settings.language)).tag(track.rawValue)
+            Toggle(t("启用白噪音", "Enable white noise"), isOn: Binding(
+                get: { model.settings.focusNoiseEnabled }, set: { _ in model.toggleFocusNoise() }))
+            DisclosureGroup(t("声音选择", "Noise selection")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Button(t("无", "None")) {
+                            var updated = model.settings
+                            updated.focusNoiseIDs = []; updated.focusNoiseRandom = false; updated.focusNoiseEnabled = false
+                            model.settings = updated
+                        }
+                        Toggle(t("随机 · 每段专注换一种", "Random · changes each focus"), isOn: Binding(
+                            get: { model.settings.focusNoiseRandom }, set: { value in
+                                var updated = model.settings
+                                updated.focusNoiseRandom = value
+                                updated.focusNoiseEnabled = value || !updated.focusNoiseIDs.isEmpty
+                                model.settings = updated
+                            }))
                     }
-                    if model.settings.musicPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
-                }
-                Button(t("导入…", "Import…")) { model.importSound(background: true) }
-            }
-            if let path = model.settings.musicPath {
-                Text(model.musicURL?.lastPathComponent ?? path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), alignment: .leading, spacing: 10) {
+                        ForEach(FocusNoise.allCases, id: \.rawValue) { noise in
+                            Toggle(noise.title(in: model.settings.language), isOn: Binding(
+                                get: { model.settings.focusNoiseIDs.contains(noise.rawValue) }, set: { selected in
+                                    var updated = model.settings
+                                    updated.focusNoiseIDs.removeAll { $0 == noise.rawValue }
+                                    if selected { updated.focusNoiseIDs.append(noise.rawValue) }
+                                    updated.focusNoiseEnabled = updated.focusNoiseRandom || !updated.focusNoiseIDs.isEmpty
+                                    model.settings = updated
+                                }))
+                        }
+                    }
+                }.padding(.top, 8)
             }
             HStack {
-                Image(systemName: "speaker.wave.2")
-                Slider(value: $model.settings.musicVolume, in: 0...1).accessibilityLabel(t("背景音乐音量", "Music volume"))
-                Text("\(Int((model.settings.musicVolume * 100).rounded()))%").monospacedDigit().frame(width: 38, alignment: .trailing)
-                Button(t("试听", "Preview audio")) { model.previewMusic() }
-                    .disabled(model.musicURL == nil || model.settings.musicVolume == 0 || model.musicError != nil)
+                Text(t("音量", "Volume"))
+                Slider(value: $model.settings.focusNoiseVolume, in: 0...1)
+                    .accessibilityLabel(t("白噪音音量", "White noise volume"))
+                Text("\(Int((model.settings.focusNoiseVolume * 100).rounded()))%")
+                    .monospacedDigit().frame(width: 38, alignment: .trailing)
             }
-            if let error = model.musicError {
+            if let error = model.focusNoiseError {
                 Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
             }
         }

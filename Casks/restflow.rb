@@ -1,6 +1,6 @@
 cask "restflow" do
-  version "0.13.0"
-  sha256 "42de95b9bd62e10f24f6ff23cd5d32cfdc4546e6cf100d819f71100e232eb461"
+  version "0.14.0"
+  sha256 "2222e2c220cc4cb043b3a9c8e528d7c7b53e08a6b911e3dedccc744a39cbcfd4"
 
   url "https://github.com/wsgggws/RestFlow/releases/download/v#{version}/RestFlow-#{version}-arm64.app.zip"
   name "RestFlow"
