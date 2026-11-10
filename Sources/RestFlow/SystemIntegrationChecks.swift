@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Carbon
 import RestFlowCore
 
@@ -11,13 +12,13 @@ enum SystemIntegrationChecks {
         do {
             var settings = AppSettings()
         settings.operatingSchedule.enabled = false
-            let chord = KeyboardShortcut(keyCode: 35, modifiers: UInt32(controlKey | optionKey | cmdKey | shiftKey))
+            let chord = RestFlowCore.KeyboardShortcut(keyCode: 35, modifiers: UInt32(controlKey | optionKey | cmdKey | shiftKey))
             settings.pauseShortcut = chord
             try controller.apply(settings)
             print("PASS native hotkey registration")
             var received: ShortcutController.Action?
             controller.perform = { received = $0 }
-            func dispatch(_ shortcut: KeyboardShortcut) throws {
+            func dispatch(_ shortcut: RestFlowCore.KeyboardShortcut) throws {
                 var event: EventRef?
                 guard CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0, 0, &event) == noErr, let event else {
                     throw ConfigurationError.invalid("Cannot create diagnostic Carbon event")
@@ -38,7 +39,7 @@ enum SystemIntegrationChecks {
             try dispatch(chord)
             guard received == .restart else { throw ConfigurationError.invalid("Reassigned Carbon event invoked wrong action") }
             print("PASS shortcut reassignment updates action dispatch")
-            settings.restNowShortcut = KeyboardShortcut(keyCode: 49, modifiers: UInt32(cmdKey))
+            settings.restNowShortcut = RestFlowCore.KeyboardShortcut(keyCode: 49, modifiers: UInt32(cmdKey))
             do {
                 try controller.apply(settings)
                 print("FAIL system shortcut accepted")
@@ -46,7 +47,7 @@ enum SystemIntegrationChecks {
             } catch { print("PASS system shortcut conflict rejected") }
             settings.restNowShortcut = nil
             try controller.apply(settings)
-            let occupied = KeyboardShortcut(keyCode: 17, modifiers: UInt32(controlKey | optionKey | cmdKey | shiftKey))
+            let occupied = RestFlowCore.KeyboardShortcut(keyCode: 17, modifiers: UInt32(controlKey | optionKey | cmdKey | shiftKey))
             var foreign: EventHotKeyRef?
             let status = RegisterEventHotKey(occupied.keyCode, occupied.modifiers,
                                              EventHotKeyID(signature: 0x54455354, id: 1), GetEventDispatcherTarget(), 0, &foreign)
@@ -199,6 +200,20 @@ enum BreakIntegrationChecks {
               NSApp.presentationOptions == previousOptions && !model.shortcuts.isSuspended,
               "screen lock closes rest windows and releases input protection immediately")
         model.setScreenLocked(false)
+        func scenePixels(_ visual: BuiltinVisual, time: Double, reduced: Bool = false) -> Data? {
+            let renderer = ImageRenderer(content: BuiltinVisualView(visual: visual, frameTime: time, reduceMotionOverride: reduced)
+                .frame(width: 400, height: 250))
+            renderer.scale = 1
+            guard let image = renderer.cgImage, let data = image.dataProvider?.data else { return nil }
+            return data as Data
+        }
+        for visual in BuiltinVisual.allCases {
+            let first = scenePixels(visual, time: 0), later = scenePixels(visual, time: 1.75)
+            check(first != nil && later != nil && first != later, "animated scene changes rendered pixels: \(visual.rawValue)")
+        }
+        let still = scenePixels(.forest, time: 0, reduced: true)
+        check(still != nil && still == scenePixels(.forest, time: 1.75, reduced: true),
+              "Reduce Motion freezes animation despite advancing time")
         return failures == 0 ? 0 : 1
     }
 }

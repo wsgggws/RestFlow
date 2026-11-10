@@ -5,7 +5,6 @@ import RestFlowCore
 
 struct BreakView: View {
     @ObservedObject var model: AppModel
-    let compact: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let palette = BreakPalette()
 
@@ -43,15 +42,9 @@ struct BreakView: View {
                         if model.isPaused {
                             Text(model.text("已暂停", "Paused")).font(.caption).foregroundStyle(palette.secondary)
                         }
-                        HStack(spacing: 14) {
-                            if !compact {
-                                breakButton(model.isPaused ? model.text("继续", "Resume") : model.text("暂停", "Pause"),
-                                            symbol: model.isPaused ? "play.fill" : "pause.fill") { model.togglePause() }
-                            }
-                            Button(action: { model.endBreak() }) {
-                                Text("Esc").font(.system(size: 13)).padding(12).contentShape(Rectangle())
-                            }.buttonStyle(.plain).foregroundStyle(palette.secondary)
-                        }.padding(.top, 4)
+                        Button(action: { model.endBreak() }) {
+                            Text("Esc").font(.system(size: 13)).padding(12).contentShape(Rectangle())
+                        }.buttonStyle(.plain).foregroundStyle(palette.secondary).padding(.top, 4)
                     }.padding(.horizontal, 28).padding(.vertical, 20)
                         .background {
                             RoundedRectangle(cornerRadius: 24).fill(.regularMaterial)
@@ -73,16 +66,6 @@ struct BreakView: View {
         } else {
             BuiltinVisualView(visual: model.breakContent.visual, isPaused: model.isPaused, language: model.settings.language)
         }
-    }
-
-    private func breakButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 22).padding(.vertical, 12)
-                .background(palette.secondary.opacity(0.08), in: Capsule())
-                .overlay(Capsule().strokeBorder(palette.secondary.opacity(0.13)))
-        }.buttonStyle(.plain).foregroundStyle(palette.secondary)
     }
 }
 

@@ -5,7 +5,6 @@ import SwiftUI
 final class BreakWindowController {
     private let model: AppModel
     private var windows: [UInt32: NSWindow] = [:]
-    private var compactPresentation = false
     private let inputGuard = BreakInputGuard()
     private var previousApplication: NSRunningApplication?
 
@@ -21,14 +20,12 @@ final class BreakWindowController {
 
     func restNow() {
         guard !model.isOutsideOperatingHours else { return }
-        compactPresentation = true
         model.restNow()
         if model.phase.isBreak { showAllScreens() }
     }
 
     func preview() {
         guard !model.phase.isBreak else { showAllScreens(); return }
-        compactPresentation = true
         model.previewBreak()
         if windows.isEmpty { showAllScreens() }
     }
@@ -54,7 +51,6 @@ final class BreakWindowController {
         let old = windows.values
         windows.removeAll()
         old.forEach { $0.close() }
-        compactPresentation = false
         if hadWindows { previousApplication?.activate(options: [.activateIgnoringOtherApps]) }
         previousApplication = nil
     }
@@ -111,7 +107,7 @@ final class BreakWindowController {
     }
 
     private func makeView() -> BreakView {
-        BreakView(model: model, compact: compactPresentation || model.isPreview)
+        BreakView(model: model)
     }
 }
 

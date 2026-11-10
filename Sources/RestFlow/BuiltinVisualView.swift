@@ -6,18 +6,29 @@ struct BuiltinVisualView: View {
     let visual: BuiltinVisual
     var isPaused = false
     var language: AppLanguage = .simplifiedChinese
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var frameTime: TimeInterval? = nil // Deterministic native pixel checks.
+    var reduceMotionOverride: Bool? = nil
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
     private let mint = Color(red: 0.63, green: 0.89, blue: 0.76)
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: isPaused || reduceMotion)) { timeline in
-            Canvas { context, size in
-                let sx = size.width / 400, sy = size.height / 250
-                context.scaleBy(x: sx, y: sy)
-                let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                draw(in: &context, time: time)
+        Group {
+            if let frameTime {
+                canvas(at: reduceMotion ? 0 : frameTime)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 24, paused: isPaused || reduceMotion)) { timeline in
+                    canvas(at: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
+                }
             }
         }.accessibilityLabel(visual.title(in: language))
+    }
+
+    private func canvas(at time: Double) -> some View {
+        Canvas { context, size in
+            context.scaleBy(x: size.width / 400, y: size.height / 250)
+            draw(in: &context, time: time)
+        }
     }
 
     private func draw(in c: inout GraphicsContext, time t: Double) {
@@ -36,7 +47,7 @@ struct BuiltinVisualView: View {
         }
         switch visual {
         case .rings:
-            let breath = 1 + 0.06 * sin(t * .pi / 4)
+            let breath = 1 + 0.10 * sin(t * .pi / 4)
             for i in 0..<4 {
                 let r = Double(42 + i * 22) * breath
                 c.stroke(Path(ellipseIn: CGRect(x: 200-r, y: 125-r, width: r*2, height: r*2)),
@@ -71,8 +82,9 @@ struct BuiltinVisualView: View {
             }
         case .sunrise:
             let sun = Color(red: 1, green: 0.79, blue: 0.48)
-            for i in (0..<4).reversed() { circle(200, 132, Double(37+i*16), sun.opacity(0.035)) }
-            circle(200, 132, 37, sun.opacity(0.85))
+            let sunY = 132 + sin(t * 0.32) * 6
+            for i in (0..<4).reversed() { circle(200, sunY, Double(37+i*16), sun.opacity(0.035 + sin(t * 0.4) * 0.008)) }
+            circle(200, sunY, 37, sun.opacity(0.85))
             for i in 0..<6 {
                 let y = 163 + Double(i)*12
                 let half = 65 - Double(i)*8 + sin(t*0.4+Double(i))*4
@@ -86,11 +98,18 @@ struct BuiltinVisualView: View {
             polygon([.init(x:75,y:211),.init(x:168,y:117),.init(x:280,y:211)],color:mint.opacity(0.4))
             polygon([.init(x:225,y:70),.init(x:245,y:48),.init(x:272,y:78),.init(x:247,y:69),.init(x:239,y:78)],color:Color.white.opacity(0.5))
             stroke([.init(x:25,y:222),.init(x:375,y:222)],color:mint.opacity(0.2))
+            for i in 0..<3 {
+                let drift = sin(t * 0.35 + Double(i)) * 28
+                let y = 158 + Double(i) * 19
+                stroke([.init(x: 30 + drift, y: y), .init(x: 220 + drift, y: y)], color: mint.opacity(0.10), width: 5)
+            }
         case .forest:
             for i in 0..<7 {
-                let x = 40 + Double(i)*53, h = Double(65+(i*31)%75), y = 213.0
+                let base = 40 + Double(i)*53, h = Double(65+(i*31)%75), y = 213.0
+                let sway = sin(t * 0.55 + Double(i) * 0.7) * 7
+                let x = base + sway
                 let color = mint.opacity(0.18 + Double(i%3)*0.13)
-                stroke([.init(x:x,y:y),.init(x:x,y:y-h)],color:color,width:3)
+                stroke([.init(x:base,y:y),.init(x:x,y:y-h)],color:color,width:3)
                 for branch in 0..<3 {
                     let top = y-h+Double(branch)*h*0.23, half = 17+Double(branch)*9
                     polygon([.init(x:x,y:top),.init(x:x-half,y:top+h*0.48),.init(x:x+half,y:top+h*0.48)],color:color)
@@ -98,7 +117,7 @@ struct BuiltinVisualView: View {
             }
             circle(318, 43, 14, mint.opacity(0.35))
         case .lotus:
-            let opening = 0.7 + sin(t * .pi / 5)*0.06
+            let opening = 0.7 + sin(t * .pi / 5)*0.14
             for i in -3...3 {
                 var petal = Path()
                 petal.move(to: CGPoint(x:200,y:205))
@@ -118,10 +137,11 @@ struct BuiltinVisualView: View {
             c.stroke(Path(ellipseIn:CGRect(x:270,y:35,width:43,height:43)),with:.color(mint.opacity(0.7)),lineWidth:2)
         case .bamboo:
             for i in 0..<5 {
-                let x = 70 + Double(i)*65, sway = sin(t*0.22+Double(i))*3
+                let x = 70 + Double(i)*65, sway = sin(t*0.4+Double(i))*6
                 stroke([.init(x:x,y:230),.init(x:x+sway,y:25)],color:mint.opacity(0.5),width:4)
                 for j in 0..<4 {
                     let y = 54+Double(j)*44
+                    let x = x + sway * (230 - y) / 205
                     stroke([.init(x:x-4,y:y),.init(x:x+4,y:y)],color:mint.opacity(0.7),width:2)
                     let sign = (i+j)%2 == 0 ? 1.0 : -1.0
                     var leaf = Path()
@@ -143,7 +163,7 @@ struct BuiltinVisualView: View {
         case .clouds:
             circle(294,62,24,Color(red:1,green:0.84,blue:0.6).opacity(0.65))
             for i in 0..<3 {
-                let x = 105 + Double(i)*78 + sin(t*0.13+Double(i))*16, y = 82 + Double(i)*47
+                let x = 105 + Double(i)*78 + sin(t*0.24+Double(i))*26, y = 82 + Double(i)*47
                 var cloud = Path()
                 cloud.addRoundedRect(in:CGRect(x:x-63,y:y,width:126,height:28),cornerSize:CGSize(width:14,height:14))
                 cloud.addEllipse(in:CGRect(x:x-38,y:y-22,width:52,height:52))

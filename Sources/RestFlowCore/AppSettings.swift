@@ -40,7 +40,7 @@ public struct ReminderMessage: Codable, Equatable, Identifiable, Sendable {
         .init(id: "breathe", text: "放松肩膀，慢慢呼吸。", englishText: "Relax your shoulders. Take a slow breath."),
         .init(id: "walk", text: "离开屏幕，走动一会儿 🌿", englishText: "Step away from the screen. Take a little walk 🌿"),
         .init(id: "stillness", text: "致虚极，守静笃。", englishText: "Empty the mind; remain deeply still."),
-        .init(id: "water", text: "上善若水。", englishText: "The highest goodness is like water."),
+        .init(id: "pause", text: "知止而后有定。", englishText: "Know when to pause, and find your calm."),
         .init(id: "journey", text: "千里之行，始于足下。", englishText: "A journey of a thousand miles begins beneath your feet."),
         .init(id: "balance", text: "文武之道，一张一弛。", englishText: "The way of balance is to alternate tension and relaxation."),
         .init(id: "joy", text: "知之者不如好之者，好之者不如乐之者。", englishText: "Knowing is less than loving; loving is less than finding joy."),
@@ -72,6 +72,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var contentStyle: ContentStyle = .personal
     public var favoriteMessageIDs: [String] = []
     public var favoriteVisualIDs: [String] = []
+    public var excludedVisualIDs: [String] = []
     public var schemaVersion = 1
     public var language: AppLanguage = .simplifiedChinese
     public var showMenuBarTime = true
@@ -108,38 +109,42 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public func message(for phase: SessionPhase, resolvedID: String? = nil) -> String {
         let id = effectiveMessageID(for: phase)
         let selected = id == ReminderMessage.randomID ? resolvedID : id
-        let source = messages.first { $0.id == selected } ??
-            (contentStyle == .classical || contentStyle == .movement ? ReminderMessage.defaults.first { $0.id == selected } : nil)
-        return source?.displayText(in: language) ?? ""
+        return messages.first { $0.id == selected }?.displayText(in: language) ?? ""
     }
 
     public func effectiveMessageID(for phase: SessionPhase) -> String {
-        if contentStyle == .quiet { return ReminderMessage.noneID }
-        if contentStyle != .personal { return ReminderMessage.randomID }
-        return phase == .longBreak ? longMessageID : shortMessageID
+        phase == .longBreak ? longMessageID : shortMessageID
     }
 
-    public var randomMessages: [ReminderMessage] {
-        let movement = Set(["eyes", "stretch", "breathe", "walk"])
-        let classical = Set(ReminderMessage.defaults.map(\.id)).subtracting(movement)
-        let styled = messages.filter {
-            contentStyle == .classical ? classical.contains($0.id) :
-                (contentStyle == .movement ? movement.contains($0.id) : true)
-        }
-        let fallback = ReminderMessage.defaults.filter {
-            contentStyle == .classical ? classical.contains($0.id) : movement.contains($0.id)
-        }
-        let available = styled.isEmpty && (contentStyle == .classical || contentStyle == .movement) ? fallback : (styled.isEmpty ? messages : styled)
-        let favorites = available.filter { favoriteMessageIDs.contains($0.id) }
-        let pool = favorites.isEmpty ? available : favorites
-        var seen = Set<String>()
-        return pool.filter { seen.insert(ReminderMessage.selectionKey($0.displayText(in: language))).inserted }
+    public var randomMessages: [ReminderMessage] { messageChoices() }
+    public var availableVisuals: [BuiltinVisual] { BuiltinVisual.allCases.filter { !excludedVisualIDs.contains($0.rawValue) } }
+    public var randomVisualIDs: [String] { availableVisuals.map(\.rawValue) }
+
+    @discardableResult
+    public mutating func deleteMessage(_ id: String) -> Bool {
+        guard let selected = messages.first(where: { $0.id == id }) else { return false }
+        let key = ReminderMessage.selectionKey(selected.displayText(in: language))
+        let removed = Set(messages.filter { ReminderMessage.selectionKey($0.displayText(in: language)) == key }.map(\.id))
+        messages.removeAll { removed.contains($0.id) }
+        if removed.contains(shortMessageID) { shortMessageID = ReminderMessage.noneID }
+        if removed.contains(longMessageID) { longMessageID = ReminderMessage.noneID }
+        return true
     }
 
-    public var randomVisualIDs: [String] {
-        let all = BuiltinVisual.allCases.map(\.rawValue)
-        let favorites = all.filter { favoriteVisualIDs.contains($0) }
-        return favorites.isEmpty ? all : favorites
+    @discardableResult
+    public mutating func deleteVisual(_ id: String) -> Bool {
+        guard BuiltinVisual(rawValue: id) != nil, !excludedVisualIDs.contains(id) else { return false }
+        excludedVisualIDs.append(id)
+        if visualID == id { visualID = BuiltinVisual.noneID }
+        return true
+    }
+
+    public mutating func restoreBuiltinMessages() {
+        for message in ReminderMessage.defaults where messages.count < 100 {
+            if !messages.contains(where: { $0.id == message.id }) && !containsMessage(message.text) {
+                messages.append(message)
+            }
+        }
     }
 
     public func containsMessage(_ text: String) -> Bool {
@@ -165,13 +170,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return result
     }
 
-    public var hasVisual: Bool { mediaPath != nil || visualID != BuiltinVisual.noneID }
+    public var hasVisual: Bool {
+        mediaPath != nil || (visualID == BuiltinVisual.randomID ? !availableVisuals.isEmpty :
+            availableVisuals.contains { $0.rawValue == visualID })
+    }
 
     /// A silent break still runs through the normal cycle, without windows or keyboard capture.
     public func showsBreakScreen(for phase: SessionPhase) -> Bool {
         guard phase.isBreak else { return false }
         let messageID = effectiveMessageID(for: phase)
-        return hasVisual || messageID != ReminderMessage.noneID
+        return hasVisual || (messageID == ReminderMessage.randomID ? !randomMessages.isEmpty : messageID != ReminderMessage.noneID)
     }
 
     public func selectedSound(choose: ([String]) -> String = { $0.randomElement()! }) -> String {
@@ -191,8 +199,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             if !condition { throw ConfigurationError.invalid(message) }
         }
         try operatingSchedule.validate()
-        try check(Set(favoriteMessageIDs).count == favoriteMessageIDs.count && favoriteMessageIDs.allSatisfy { id in messages.contains { $0.id == id } }, "Favorites must refer to unique message IDs")
-        try check(Set(favoriteVisualIDs).count == favoriteVisualIDs.count && favoriteVisualIDs.allSatisfy { BuiltinVisual(rawValue: $0) != nil }, "Favorites must refer to unique built-in visuals")
+        try check(Set(excludedVisualIDs).count == excludedVisualIDs.count && excludedVisualIDs.allSatisfy { BuiltinVisual(rawValue: $0) != nil }, "Excluded visuals must name unique built-in scenes")
         try check(schemaVersion == 1, "schemaVersion must be 1")
         for (name, value, range) in [
             ("workMinutes", workMinutes, 1.0...240.0),
@@ -211,7 +218,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         try check(Set(shortcuts).count == shortcuts.count, language.text("快捷键重复，请为每个操作设置不同的快捷键。", "Shortcuts must be different for each action"))
         try check((1...20).contains(cycles), "cycles must be within 1...20")
-        try check((1...100).contains(messages.count), "messages must contain 1...100 entries")
+        try check((0...100).contains(messages.count), "messages must contain 0...100 entries")
         try check(Set(messages.map(\.id)).count == messages.count, "message IDs must be unique")
         for message in messages {
             try check(!message.id.isEmpty && ![ReminderMessage.randomID, ReminderMessage.noneID].contains(message.id) && message.id.count <= 100, "message ID must contain 1...100 characters and cannot be reserved")
@@ -224,7 +231,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(shortMessageID) || messages.contains(where: { $0.id == shortMessageID }), "shortMessageID must refer to a message, __random__ or __none__")
         try check([ReminderMessage.randomID, ReminderMessage.noneID].contains(longMessageID) || messages.contains(where: { $0.id == longMessageID }), "longMessageID must refer to a message, __random__ or __none__")
-        try check([BuiltinVisual.randomID, BuiltinVisual.noneID].contains(visualID) || BuiltinVisual(rawValue: visualID) != nil, "visualID must name a built-in visual, __random__ or __none__")
+        try check([BuiltinVisual.randomID, BuiltinVisual.noneID].contains(visualID) || (BuiltinVisual(rawValue: visualID) != nil && !excludedVisualIDs.contains(visualID)), "visualID must name an available visual, __random__ or __none__")
         for path in [mediaPath, soundPath].compactMap({ $0 }) {
             try check(!path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !path.contains("\0"),
                       "file paths must be nonempty local paths")
@@ -233,7 +240,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs
+        case idleDetectionEnabled, deferEnabled, contentStyle, favoriteMessageIDs, favoriteVisualIDs, excludedVisualIDs
         case operatingSchedule, schemaVersion, language, showMenuBarTime, checkForUpdatesAutomatically, breakTransparency, launchAtLogin, pauseShortcut, restartShortcut, restNowShortcut, workMinutes, shortBreakSeconds, longBreakMinutes
         case cycles, prealertEnabled, warningSeconds, soundEnabled, soundName, soundPath, volume
         case messages, shortMessageID, longMessageID, mediaPath, visualID
@@ -254,6 +261,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         contentStyle = try value(.contentStyle, contentStyle)
         favoriteMessageIDs = try value(.favoriteMessageIDs, favoriteMessageIDs)
         favoriteVisualIDs = try value(.favoriteVisualIDs, favoriteVisualIDs)
+        excludedVisualIDs = try value(.excludedVisualIDs, excludedVisualIDs)
         operatingSchedule = try value(.operatingSchedule, operatingSchedule)
         schemaVersion = try value(.schemaVersion, schemaVersion)
         language = try value(.language, language)
@@ -324,6 +332,28 @@ public struct AppSettings: Codable, Equatable, Sendable {
         visualID = try value(.visualID, visualID)
         soundPath = try values.decodeIfPresent(String.self, forKey: .soundPath)
         mediaPath = try values.decodeIfPresent(String.self, forKey: .mediaPath)
+        // Replace only the unchanged former built-in; preserve every user-authored entry.
+        if let index = messages.firstIndex(where: { $0.id == "water" && $0.text == "上善若水。" &&
+            ($0.englishText == nil || $0.englishText == "The highest goodness is like water.") }) {
+            var replacement = ReminderMessage.defaults.first { $0.id == "pause" }!
+            var suffix = 1
+            while messages.contains(where: { $0.id == replacement.id }) {
+                replacement.id = "pause-builtin-\(suffix)"; suffix += 1
+            }
+            messages[index] = replacement
+            if shortMessageID == "water" { shortMessageID = replacement.id }
+            if longMessageID == "water" { longMessageID = replacement.id }
+        } else if !messages.contains(where: { $0.id == "water" }), messages.contains(where: { $0.id == "pause" }) {
+            if shortMessageID == "water" { shortMessageID = "pause" }
+            if longMessageID == "water" { longMessageID = "pause" }
+        }
+        // Simplified selectors replace the 0.11 presets; legacy favorites no longer restrict random.
+        if contentStyle == .quiet { shortMessageID = ReminderMessage.noneID; longMessageID = ReminderMessage.noneID }
+        if contentStyle == .classical || contentStyle == .movement {
+            shortMessageID = ReminderMessage.randomID; longMessageID = ReminderMessage.randomID
+        }
+        contentStyle = .personal
+        favoriteMessageIDs = []; favoriteVisualIDs = []
         try validate()
     }
 

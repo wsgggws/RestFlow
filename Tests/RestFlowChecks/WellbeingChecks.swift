@@ -3,61 +3,104 @@ import RestFlowCore
 
 func wellbeingChecks() -> [(String, () -> Void)] {
     [
-        ("new preferences migrate without changing an existing content selection", {
+        ("default catalog has twelve unique messages and twelve scenes without the retired quote", {
+            let settings = AppSettings()
+            expectEqual(settings.messages.count, 12)
+            expectEqual(Set(settings.messages.map(\.id)).count, 12)
+            expectEqual(settings.messages.contains { $0.text.contains("上善若水") }, false)
+            expectEqual(settings.messages.contains { $0.text == "知止而后有定。" }, true)
+            expectEqual(settings.availableVisuals.count, 12)
+        }),
+        ("retired built-in migration retains selected references and user-authored text", {
             do {
-                let old = try ConfigurationStore.decode(Data(#"{"shortMessageID":"water","soundEnabled":false}"#.utf8))
-                expectEqual(old.contentStyle, .personal)
-                expectEqual(old.shortMessageID, "water")
-                expectEqual(old.soundEnabled, false)
-                expectEqual(old.idleDetectionEnabled, true)
-                var updated = old
-                updated.favoriteMessageIDs = ["water", "journey"]
-                updated.favoriteVisualIDs = ["lotus"]
-                updated.contentStyle = .classical
-                expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(updated)), updated)
-                updated.favoriteMessageIDs = ["missing"]
-                do { try updated.validate(); expectEqual(true, false) } catch {}
-                updated.favoriteMessageIDs = []
-                updated.favoriteVisualIDs = ["lotus", "lotus"]
-                do { try updated.validate(); expectEqual(true, false) } catch {}
+                var old = AppSettings()
+                old.messages = [ReminderMessage(id: "water", text: "上善若水。", englishText: "The highest goodness is like water."),
+                                ReminderMessage(id: "pause", text: "My own message")]
+                old.shortMessageID = "water"; old.longMessageID = "water"
+                let migrated = try ConfigurationStore.decode(ConfigurationStore.encode(old))
+                expectEqual(migrated.messages.count, 2)
+                expectEqual(migrated.message(for: .shortBreak), "知止而后有定。")
+                expectEqual(migrated.longMessageID, migrated.shortMessageID)
+                expectEqual(migrated.messages.first { $0.id == "pause" }?.text, "My own message")
+                old.messages[0].text = "A custom message using the former ID"
+                let custom = try ConfigurationStore.decode(ConfigurationStore.encode(old))
+                expectEqual(custom.message(for: .shortBreak), "A custom message using the former ID")
             } catch { expectEqual(error.localizedDescription, "success") }
         }),
-        ("favorite random pools retain unique display text and avoid consecutive choices", {
-            var settings = AppSettings()
-            settings.shortMessageID = ReminderMessage.randomID
-            settings.longMessageID = ReminderMessage.randomID
-            settings.visualID = BuiltinVisual.randomID
-            settings.favoriteMessageIDs = ["water", "journey"]
-            settings.favoriteVisualIDs = ["lotus", "forest"]
-            let content = BreakContent(settings: settings, avoidingMessageID: "water", avoidingVisual: .lotus, choose: { $0.first! })
-            expectEqual(content.shortMessageID, "journey")
-            expectEqual(content.longMessageID, "journey")
-            expectEqual(content.visual, .forest)
-            settings.favoriteMessageIDs = ["water"]
-            expectEqual(BreakContent(settings: settings, avoidingMessageID: "water").shortMessageID, "water")
-            settings.messages.append(ReminderMessage(id: "alias", text: "上善若水。"))
-            settings.favoriteMessageIDs = ["water", "alias"]
-            expectEqual(settings.randomMessages.count, 1)
+        ("legacy favorites and presets migrate to unrestricted simple selectors", {
+            do {
+                let old = try ConfigurationStore.decode(Data(#"{"contentStyle":"classical","favoriteMessageIDs":["water"],"favoriteVisualIDs":["lotus"],"shortMessageID":"water"}"#.utf8))
+                expectEqual(old.contentStyle, .personal)
+                expectEqual(old.shortMessageID, ReminderMessage.randomID)
+                expectEqual(old.randomMessages.count, 12)
+                expectEqual(old.randomVisualIDs.count, 12)
+                expectEqual(old.favoriteMessageIDs, [])
+                expectEqual(old.favoriteVisualIDs, [])
+                let quiet = try ConfigurationStore.decode(Data(#"{"contentStyle":"quiet"}"#.utf8))
+                expectEqual(quiet.shortMessageID, ReminderMessage.noneID)
+                expectEqual(quiet.longMessageID, ReminderMessage.noneID)
+                expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(old)), old)
+            } catch { expectEqual(error.localizedDescription, "success") }
         }),
-        ("classical movement and quiet styles preserve personal selections", {
+        ("message deletion clears shared selections and restoration preserves custom entries", {
             var settings = AppSettings()
-            settings.contentStyle = .classical
-            expectEqual(settings.randomMessages.count, 8)
-            settings.contentStyle = .movement
-            expectEqual(settings.randomMessages.count, 4)
-            settings.favoriteMessageIDs = ["water", "eyes"]
-            expectEqual(settings.randomMessages.map(\.id), ["eyes"])
-            settings.contentStyle = .quiet
-            expectEqual(settings.message(for: .shortBreak), "")
-            expectEqual(settings.showsBreakScreen(for: .shortBreak), true)
-            settings.visualID = BuiltinVisual.noneID
-            expectEqual(settings.showsBreakScreen(for: .shortBreak), false)
-            settings.contentStyle = .personal
-            expectEqual(settings.shortMessageID, "eyes")
-            settings.messages = [ReminderMessage(id: "custom", text: "hello")]
-            settings.contentStyle = .movement
-            let resolved = BreakContent(settings: settings, choose: { $0.first! })
-            expectEqual(resolved.message(for: .shortBreak, settings: settings).isEmpty, false)
+            settings.shortMessageID = "pause"; settings.longMessageID = "pause"
+            expectEqual(settings.deleteMessage("pause"), true)
+            expectEqual(settings.messages.count, 11)
+            expectEqual(settings.shortMessageID, ReminderMessage.noneID)
+            expectEqual(settings.longMessageID, ReminderMessage.noneID)
+            expectEqual(settings.randomMessages.contains { $0.id == "pause" }, false)
+            settings.messages.append(ReminderMessage(id: "custom", text: "Keep me 💚"))
+            settings.restoreBuiltinMessages(); settings.restoreBuiltinMessages()
+            expectEqual(settings.messages.count, 13)
+            expectEqual(settings.messages.last { $0.id == "custom" }?.text, "Keep me 💚")
+        }),
+        ("deleted visuals stay out of the picker and random until restored", {
+            do {
+                var settings = AppSettings()
+                expectEqual(settings.deleteVisual("rings"), true)
+                expectEqual(settings.visualID, BuiltinVisual.noneID)
+                expectEqual(settings.availableVisuals.count, 11)
+                expectEqual(settings.deleteVisual("rings"), false)
+                settings.visualID = BuiltinVisual.randomID
+                expectEqual(settings.randomVisualIDs.contains("rings"), false)
+                expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
+                settings.excludedVisualIDs = []
+                expectEqual(settings.availableVisuals.count, 12)
+            } catch { expectEqual(error.localizedDescription, "success") }
+        }),
+        ("empty libraries remain silent and random never samples an empty array", {
+            do {
+                var settings = AppSettings()
+                for id in settings.messages.map(\.id) { _ = settings.deleteMessage(id) }
+                for visual in BuiltinVisual.allCases { _ = settings.deleteVisual(visual.rawValue) }
+                settings.shortMessageID = ReminderMessage.randomID; settings.longMessageID = ReminderMessage.randomID
+                settings.visualID = BuiltinVisual.randomID; settings.soundName = AppSettings.noSoundID
+                try settings.validate()
+                expectEqual(settings.showsBreakScreen(for: .shortBreak), false)
+                expectEqual(settings.shouldPrealert(for: .shortBreak), false)
+                let content = BreakContent(settings: settings, choose: { _ in fatalError("Empty pools must not be sampled") })
+                expectEqual(content.shortMessageID, ReminderMessage.noneID)
+                expectEqual(try ConfigurationStore.decode(ConfigurationStore.encode(settings)), settings)
+                settings.restoreBuiltinMessages(); settings.excludedVisualIDs = []
+                expectEqual(settings.showsBreakScreen(for: .shortBreak), true)
+            } catch { expectEqual(error.localizedDescription, "success") }
+        }),
+        ("random still deduplicates labels and avoids consecutive content", {
+            var settings = AppSettings()
+            settings.messages = [ReminderMessage(id: "a", text: "One"), ReminderMessage(id: "b", text: "Two"), ReminderMessage(id: "c", text: " One ")]
+            settings.shortMessageID = ReminderMessage.randomID; settings.longMessageID = ReminderMessage.randomID
+            settings.visualID = BuiltinVisual.randomID
+            settings.excludedVisualIDs = BuiltinVisual.allCases.filter { $0 != .forest && $0 != .lotus }.map(\.rawValue)
+            let content = BreakContent(settings: settings, avoidingMessageID: "a", avoidingVisual: .lotus, choose: { $0.first! })
+            expectEqual(content.shortMessageID, "b")
+            expectEqual(content.visual, .forest)
+            expectEqual(settings.randomMessages.count, 2)
+            settings.shortMessageID = "a"; settings.longMessageID = "c"
+            expectEqual(settings.deleteMessage("a"), true)
+            expectEqual(settings.messages.map(\.id), ["b"])
+            expectEqual(settings.shortMessageID, ReminderMessage.noneID)
+            expectEqual(settings.longMessageID, ReminderMessage.noneID)
         }),
         ("defer adds exactly three minutes once without advancing the cycle", {
             var engine = SessionEngine(plan: SessionPlan(workDuration: 60, warningSeconds: 15), now: 0)

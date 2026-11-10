@@ -40,9 +40,9 @@
       "englishText": "Empty the mind; remain deeply still."
     },
     {
-      "id": "water",
-      "text": "上善若水。",
-      "englishText": "The highest goodness is like water."
+      "id": "pause",
+      "text": "知止而后有定。",
+      "englishText": "Know when to pause, and find your calm."
     },
     {
       "id": "journey",
@@ -101,7 +101,5 @@
   },
   "idleDetectionEnabled": true,
   "deferEnabled": true,
-  "contentStyle": "personal",
-  "favoriteMessageIDs": [],
-  "favoriteVisualIDs": []
+  "excludedVisualIDs": []
 }

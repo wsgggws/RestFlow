@@ -33,6 +33,7 @@ public struct BreakContent: Equatable, Sendable {
     public init(settings: AppSettings, avoidingMessageID: String? = nil, avoidingVisual: BuiltinVisual? = nil,
                 choose: ([String]) -> String = { $0.randomElement()! }) {
         func pick(_ pool: [String], avoiding: String?) -> String {
+            guard !pool.isEmpty else { return ReminderMessage.noneID }
             let alternatives = pool.filter { $0 != avoiding }
             return choose(alternatives.isEmpty ? pool : alternatives)
         }

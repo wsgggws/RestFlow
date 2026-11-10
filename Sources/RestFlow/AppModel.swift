@@ -41,8 +41,7 @@ final class AppModel: ObservableObject {
             }
             if settings.messages != oldValue.messages || settings.shortMessageID != oldValue.shortMessageID ||
                 settings.longMessageID != oldValue.longMessageID || settings.visualID != oldValue.visualID ||
-                settings.contentStyle != oldValue.contentStyle || settings.favoriteMessageIDs != oldValue.favoriteMessageIDs ||
-                settings.favoriteVisualIDs != oldValue.favoriteVisualIDs {
+                settings.excludedVisualIDs != oldValue.excludedVisualIDs {
                 prepareBreakContent()
             }
             if settings.language != oldValue.language { feedback.registerActions(language: settings.language) }
@@ -410,10 +409,21 @@ final class AppModel: ObservableObject {
         } catch { mediaError = error.localizedDescription }
     }
 
-    func removeMedia() {
-        let previous = settings.mediaPath
-        settings.mediaPath = nil
-        if settings.mediaPath == nil { MediaStore.removeManaged(path: previous) }
+    func deleteMessage(_ id: String) {
+        var updated = settings
+        guard updated.deleteMessage(id) else { return }
+        settings = updated
+    }
+
+    func deleteSelectedVisual() {
+        var updated = settings
+        let path = updated.mediaPath
+        if path != nil {
+            updated.mediaPath = nil
+            updated.visualID = BuiltinVisual.noneID
+        } else if !updated.deleteVisual(updated.visualID) { return }
+        settings = updated
+        if settings.mediaPath == nil { MediaStore.removeManaged(path: path) }
     }
 
     func importSound() {

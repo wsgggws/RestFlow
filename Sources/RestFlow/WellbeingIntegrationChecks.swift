@@ -123,6 +123,36 @@ enum WellbeingIntegrationChecks {
             check(restored && silent && app.settings.soundEnabled && app.settings.soundName == AppSettings.randomSoundID,
                   "unified sound selection restores legacy disabled custom sounds and clears custom paths for none")
         }
+        do {
+            let app = model("content-editing"); defer { app.stop() }
+            app.settings.shortMessageID = "pause"; app.settings.longMessageID = "pause"
+            app.deleteMessage("pause")
+            let saved = try ConfigurationStore(directory: app.configuration.directory).load(orCreate: settings)
+            check(saved.shortMessageID == ReminderMessage.noneID && saved.longMessageID == ReminderMessage.noneID &&
+                  !saved.messages.contains(where: { $0.id == "pause" }), "deleting a shared message persists both cleared selectors")
+            let source = root.appendingPathComponent("original.png")
+            try Data([1,2,3]).write(to: source)
+            app.settings.mediaPath = source.path
+            app.deleteSelectedVisual()
+            check(app.settings.mediaPath == nil && app.settings.visualID == BuiltinVisual.noneID &&
+                  FileManager.default.fileExists(atPath: source.path), "deleting an external visual clears its reference without deleting the source")
+            let folder = app.configuration.directory.appendingPathComponent("media/\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data([1,2,3]).write(to: folder.appendingPathComponent("image.png"))
+            let relative = "media/\(folder.lastPathComponent)/image.png"
+            app.settings.mediaPath = relative
+            var external = app.settings; external.volume = 0.23
+            let externalData = try ConfigurationStore.encode(external)
+            try externalData.write(to: app.configuration.fileURL, options: .atomic)
+            app.deleteSelectedVisual()
+            check(app.configurationError != nil && app.settings.mediaPath == relative &&
+                  FileManager.default.fileExists(atPath: folder.path) && (try? Data(contentsOf: app.configuration.fileURL)) == externalData,
+                  "a config conflict rolls back visual deletion and protects managed media")
+            app.reloadConfiguration(force: true)
+            app.deleteSelectedVisual()
+            check(app.settings.mediaPath == nil && !FileManager.default.fileExists(atPath: folder.path),
+                  "managed media is removed only after the preference change saves successfully")
+        } catch { check(false, "content editing: \(error)") }
         return failures == 0 ? 0 : 1
     }
 }

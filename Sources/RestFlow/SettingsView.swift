@@ -39,7 +39,7 @@ struct SettingsView: View {
             Divider()
             HStack {
                 Spacer()
-                Button(t("预览休息界面", "Preview break")) { preview() }
+                Button(t("预览", "Preview")) { preview() }
                     .buttonStyle(.bordered)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
@@ -133,60 +133,42 @@ struct SettingsView: View {
     private var appearanceTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Picker(t("内容风格", "Content style"), selection: Binding(get: { model.settings.contentStyle }, set: { style in
-                    var updated = model.settings
-                    updated.contentStyle = style
-                    if style == .quiet && !updated.hasVisual { updated.visualID = BuiltinVisual.randomID }
-                    model.settings = updated
-                })) {
-                    ForEach(ContentStyle.allCases, id: \.rawValue) { style in
-                        Text(style.title(in: model.settings.language)).tag(style)
-                    }
-                }
-                if model.settings.contentStyle == .personal {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         messagePicker(t("短休息", "Short break"), selection: $model.settings.shortMessageID)
                         messagePicker(t("长休息", "Long break"), selection: $model.settings.longMessageID)
                         HStack {
+                            if ReminderMessage.defaults.contains(where: { original in !model.settings.messages.contains { $0.id == original.id } }) {
+                                Button(t("恢复内置文案", "Restore built-in messages")) { model.settings.restoreBuiltinMessages() }
+                            }
                             Spacer()
                             Button { addMessage() } label: { Label(t("添加文案", "Add message"), systemImage: "plus") }
                                 .disabled(model.settings.messages.count >= 100)
                         }
                     }.padding(10)
                 } label: { Text(t("文案", "Messages")) }
-                }
-                if model.settings.contentStyle != .quiet {
-                    DisclosureGroup(t("收藏文案", "Favorite messages")) {
-                        note(t("随机优先使用当前风格下的收藏；未收藏时使用全部。", "Random uses favorites in this style, or all messages when none are selected."))
-                        ForEach(model.settings.messageChoices()) { message in
-                            Toggle(message.displayText(in: model.settings.language), isOn: favorite(message.id, key: \.favoriteMessageIDs))
-                                .toggleStyle(.checkbox).font(.caption)
-                        }
-                    }
-                }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Picker(t("素材", "Visual"), selection: visualSelection) {
                                 Text(t("无", "None")).tag(BuiltinVisual.noneID)
                                 Text(t("随机", "Random")).tag(BuiltinVisual.randomID)
-                                ForEach(BuiltinVisual.allCases, id: \.rawValue) { visual in
+                                ForEach(model.settings.availableVisuals, id: \.rawValue) { visual in
                                     Text(visual.title(in: model.settings.language)).tag(visual.rawValue)
                                 }
                                 if model.settings.mediaPath != nil {
                                     Text(t("自定义", "Custom")).tag("__custom__")
                                 }
                             }
+                            deleteButton(t("删除当前素材", "Delete selected visual"), disabled: model.settings.mediaPath == nil && BuiltinVisual(rawValue: model.settings.visualID) == nil) {
+                                if confirmDeletion(t("删除当前素材？", "Delete selected visual?"), detail: model.settings.mediaPath != nil
+                                    ? t("仅移除应用中的副本或引用，保留原始文件。", "Removes the app's copy or reference. The original file is kept.")
+                                    : t("可通过“恢复内置动画”重新加入。", "You can add it back with Restore built-in animations.")) { model.deleteSelectedVisual() }
+                            }
                             Button(t("导入…", "Import…")) { model.importMedia() }
                         }
-                        DisclosureGroup(t("收藏场景", "Favorite scenes")) {
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading) {
-                                ForEach(BuiltinVisual.allCases, id: \.rawValue) { visual in
-                                    Toggle(visual.title(in: model.settings.language), isOn: favorite(visual.rawValue, key: \.favoriteVisualIDs))
-                                        .toggleStyle(.checkbox).font(.caption)
-                                }
-                            }
+                        if !model.settings.excludedVisualIDs.isEmpty {
+                            Button(t("恢复内置动画", "Restore built-in animations")) { model.settings.excludedVisualIDs = [] }
                         }
                         if let path = model.settings.mediaPath {
                             Text(model.mediaURL?.lastPathComponent ?? path).font(.caption).lineLimit(1)
@@ -287,23 +269,36 @@ struct SettingsView: View {
             }
     }
 
-    private func favorite(_ id: String, key: WritableKeyPath<AppSettings, [String]>) -> Binding<Bool> {
-        Binding(get: { model.settings[keyPath: key].contains(id) }, set: { selected in
-            var updated = model.settings
-            updated[keyPath: key].removeAll { $0 == id }
-            if selected { updated[keyPath: key].append(id) }
-            model.settings = updated
-        })
+    private func deleteButton(_ label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: "trash") }
+            .buttonStyle(.borderless).help(label).accessibilityLabel(label).disabled(disabled)
+    }
+
+    private func confirmDeletion(_ title: String, detail: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: t("删除", "Delete"))
+        alert.addButton(withTitle: t("取消", "Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func messagePicker(_ title: String, selection: Binding<String>) -> some View {
-        Picker(title, selection: selection) {
-            Text(t("无", "None")).tag(ReminderMessage.noneID)
-            Text(t("随机", "Random")).tag(ReminderMessage.randomID)
-            ForEach(model.settings.messageChoices(selectedID: selection.wrappedValue)) { message in
-                Text(message.displayText(in: model.settings.language).replacingOccurrences(of: "\n", with: " ")).lineLimit(1).tag(message.id)
+        HStack {
+            Picker(title, selection: selection) {
+                Text(t("无", "None")).tag(ReminderMessage.noneID)
+                Text(t("随机", "Random")).tag(ReminderMessage.randomID)
+                ForEach(model.settings.messageChoices(selectedID: selection.wrappedValue)) { message in
+                    Text(message.displayText(in: model.settings.language).replacingOccurrences(of: "\n", with: " ")).lineLimit(1).tag(message.id)
+                }
+            }.pickerStyle(.menu)
+            deleteButton(t("删除当前文案", "Delete selected message"), disabled: !model.settings.messages.contains { $0.id == selection.wrappedValue }) {
+                let id = selection.wrappedValue
+                if confirmDeletion(t("删除当前文案？", "Delete selected message?"), detail: String((model.settings.messages.first { $0.id == id }?.displayText(in: model.settings.language) ?? "").prefix(160))) {
+                    model.deleteMessage(id)
+                }
             }
-        }.pickerStyle(.menu)
+        }
     }
 
     private func addMessage() {
