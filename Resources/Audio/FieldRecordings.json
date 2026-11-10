@@ -1,0 +1,141 @@
+{
+  "sources": {
+    "traffic": {
+      "file": "traffic-865147.mp3",
+      "url": "https://cdn.freesound.org/previews/865/865147_9616576-hq.mp3",
+      "sha256": "623ebdc77ebe41613b4d13d4644970e39677000041dc4ca16fe91930637d51d6",
+      "author": "IENBA",
+      "title": "Medium Traffic",
+      "sourceURL": "https://freesound.org/people/IENBA/sounds/865147/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "frogs": {
+      "file": "frogs-634612.mp3",
+      "url": "https://cdn.freesound.org/previews/634/634612_374422-hq.mp3",
+      "sha256": "c9ee883767084a3682704297fea7994cf9fcef7d8115ee9276ec4839c25d08af",
+      "author": "volivieri",
+      "title": "lizzie frogs long.wav",
+      "sourceURL": "https://freesound.org/people/volivieri/sounds/634612/",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "groundRain": {
+      "file": "groundRain-329113.mp3",
+      "url": "https://cdn.freesound.org/previews/329/329113_3474310-hq.mp3",
+      "sha256": "c4ca352409a28afb17685f9c4d446b070ec0b68f443c5b7edc42555bfe6c3b04",
+      "author": "ivolipa",
+      "title": "Rain_Falling_On_Ground.wav",
+      "sourceURL": "https://freesound.org/people/ivolipa/sounds/329113/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "wildWind": {
+      "file": "wildWind-217506.mp3",
+      "url": "https://cdn.freesound.org/previews/217/217506_1661766-hq.mp3",
+      "sha256": "dace89ad0d1e15b2bf5527a0fe8f0cbcf6a2dd18f6ee7b27c70fd3cadb2e49d7",
+      "author": "felix.blume",
+      "title": "Wind blowing in a field in Texas, USA",
+      "sourceURL": "https://freesound.org/people/felix.blume/sounds/217506/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "bonfire": {
+      "file": "bonfire-563764.mp3",
+      "url": "https://cdn.freesound.org/previews/563/563764_6253486-hq.mp3",
+      "sha256": "7253438734d3502821b54161b6796260cfa484ae60c0da0cfa7d15ee1d6f5b82",
+      "author": "florianreichelt",
+      "title": "bonfire flames sizzling",
+      "sourceURL": "https://freesound.org/people/florianreichelt/sounds/563764/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "fireCrackles": {
+      "file": "fireCrackles-563766.mp3",
+      "url": "https://cdn.freesound.org/previews/563/563766_6253486-hq.mp3",
+      "sha256": "23f8893d6264ea499c6422584ae677fcf4170760669a057fdb0f155f674868b5",
+      "author": "florianreichelt",
+      "title": "fire crackles",
+      "sourceURL": "https://freesound.org/people/florianreichelt/sounds/563766/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "dawnBirds": {
+      "file": "dawnBirds-745273.mp3",
+      "url": "https://cdn.freesound.org/previews/745/745273_5487341-hq.mp3",
+      "sha256": "847079ca64f9f9b6d720d4059a62a0d75d728fb218dd3656e5d2a745ce0013ec",
+      "author": "SamsterBirdies",
+      "title": "Bird ambience. Coniferous forest dawn chorus.",
+      "sourceURL": "https://freesound.org/people/SamsterBirdies/sounds/745273/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "crowd": {
+      "file": "crowd-608996.mp3",
+      "url": "https://cdn.freesound.org/previews/608/608996_10476-hq.mp3",
+      "sha256": "9a3fd2457e6e646bd644f740df4c1e014fc105e521bfd5498fb0e53cdb3021ca",
+      "author": "Psykophobia",
+      "title": "5 min of crowd chatter.  40 people.wav",
+      "sourceURL": "https://freesound.org/people/Psykophobia/sounds/608996/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    "thunderCrack": {
+      "file": "thunderCrack-361772.mp3",
+      "url": "https://cdn.freesound.org/previews/361/361772_1857065-hq.mp3",
+      "sha256": "26e6bbb7a5e81a14341ae254b448a02c040bafb2668ce5b36fbe7258174df581",
+      "author": "kingsrow",
+      "title": "2016-10-06 Thunder Crack.wav",
+      "sourceURL": "https://freesound.org/people/kingsrow/sounds/361772/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+    }
+  },
+  "scenes": {
+    "train": {
+      "source": "traffic",
+      "segments": [
+        [
+          0,
+          15
+        ],
+        [
+          18,
+          11.5
+        ]
+      ],
+      "seconds": 25
+    },
+    "aircraft": {
+      "source": "frogs",
+      "start": 60,
+      "seconds": 48
+    },
+    "lightRain": {
+      "source": "groundRain",
+      "start": 4,
+      "seconds": 48
+    },
+    "wind": {
+      "source": "wildWind",
+      "start": 40,
+      "seconds": 48
+    },
+    "fire": {
+      "source": "bonfire",
+      "start": 0.5,
+      "seconds": 48,
+      "layer": {
+        "source": "fireCrackles",
+        "start": 1,
+        "relativeGain": 0.65
+      }
+    },
+    "thunder": {
+      "source": "thunderCrack",
+      "start": 0.5,
+      "seconds": 26
+    },
+    "birds": {
+      "source": "dawnBirds",
+      "start": 60,
+      "seconds": 48
+    },
+    "cafe": {
+      "source": "crowd",
+      "start": 70,
+      "seconds": 48
+    }
+  }
+}

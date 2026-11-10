@@ -426,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         delegate.menuWillOpen(menu)
         check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")
         check(menu.items.contains { $0.title == "Change white noise" } &&
-              delegate.noiseMenu?.menu.items.contains { $0.title == "Distant thunder" } == true,
+              delegate.noiseMenu?.menu.items.contains { $0.title == "Cracking thunder" } == true,
               "noise submenu and renamed thunder switch to English with the interface")
         check(delegate.statusItem.button?.toolTip == nil, "tooltip remains absent after phase and language changes")
         return failures == 0 ? 0 : 1

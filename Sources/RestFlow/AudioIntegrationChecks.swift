@@ -20,33 +20,53 @@ enum AudioIntegrationChecks {
             print("\(result ? "PASS" : "FAIL") \(message)"); if !result { failures += 1 }
         }
         var unique = Set<Data>()
+        var assetRMS: [String: Double] = [:]
         for noise in FocusNoise.allCases {
             do {
                 guard let url = AudioAssets.noiseURL(noise.rawValue) else { throw ConfigurationError.invalid("Missing noise") }
                 let file = try AVAudioFile(forReading: url)
                 let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
                 try file.read(into: buffer)
-                let samples = buffer.floatChannelData![0], count = Int(buffer.frameLength)
-                var peak: Float = 0, energy: Double = 0
-                for i in 0..<count { peak = max(peak, abs(samples[i])); energy += Double(samples[i]*samples[i]) }
-                check(Double(count)/file.processingFormat.sampleRate == 16 && peak <= 0.921 && (0.23...0.25).contains(sqrt(energy/Double(count))),
-                      "16-second soundscape has normalized loudness and unclipped peaks: \(noise.rawValue)")
-                if [.lightRain, .thunder, .keyboard].contains(noise) {
-                    var low: Float = 0, lowEnergy = 0.0, windowEnergy = 0.0, quietWindows = 0
+                let count = Int(buffer.frameLength), channels = Int(buffer.format.channelCount)
+                let recorded = ![FocusNoise.ocean, .stream, .night, .keyboard].contains(noise)
+                let duration = Double(count)/file.processingFormat.sampleRate
+                var peak: Float = 0, energy = 0.0, quietWindows = 0
+                for channel in 0..<channels {
+                    let samples = buffer.floatChannelData![channel]
+                    var windowEnergy = 0.0
                     let window = Int(file.processingFormat.sampleRate / 10)
                     for i in 0..<count {
-                        low += 0.06*(samples[i]-low)
-                        lowEnergy += Double(low*low)
+                        peak = max(peak, abs(samples[i])); energy += Double(samples[i]*samples[i])
                         windowEnergy += Double(samples[i]*samples[i])
                         if (i+1) % window == 0 {
                             if sqrt(windowEnergy/Double(window)) < 0.02 { quietWindows += 1 }
                             windowEnergy = 0
                         }
                     }
-                    if noise == .lightRain { check(lowEnergy/energy < 0.012, "fine rain emphasizes small high-frequency impacts without a low flowing-water bed") }
-                    if noise == .thunder { check(lowEnergy/energy > 0.45 && quietWindows >= 20, "distant thunder has low rolls with quiet intervals instead of continuous rain") }
-                    if noise == .keyboard { check(quietWindows >= 10, "mechanical typing retains pauses between phrases rather than a continuous tone") }
+                    // Broadband audio naturally has large adjacent sample differences.
+                    // Detect a seam click relative to the local 10 ms derivative energy.
+                    let edge = min(count/2, Int(buffer.format.sampleRate/100))
+                    var derivativeEnergy = 0.0
+                    for i in 1..<edge {
+                        for offset in [0, count-edge] {
+                            let delta = Double(samples[offset+i]-samples[offset+i-1])
+                            derivativeEnergy += delta*delta
+                        }
+                    }
+                    let localDerivative = sqrt(derivativeEnergy/Double(2*(edge-1)))
+                    check(Double(abs(samples[0]-samples[count-1])) <= 5*localDerivative + 1/32768,
+                          "loop boundary stays within local waveform variation: \(noise.rawValue), channel \(channel)")
                 }
+                let rms = sqrt(energy/Double(count*channels))
+                assetRMS[noise.rawValue] = rms
+                check(peak <= 0.921 && rms > 0.015 && rms <= 0.25 &&
+                      (recorded ? ((25...48).contains(duration) && channels == 2 && buffer.format.sampleRate == 44100) : duration == 16),
+                      "soundscape preserves headroom and expected format: \(noise.rawValue) (\(duration)s, RMS=\(rms), peak=\(peak))")
+                if noise == .thunder {
+                    check(Double(peak)/rms > 8 && quietWindows >= 20,
+                          "recorded thunder retains sharp transients and quiet intervals")
+                }
+                if noise == .keyboard { check(quietWindows >= 10, "mechanical typing retains pauses between phrases") }
                 unique.insert(try Data(contentsOf: url))
             } catch { check(false, "noise asset \(noise): \(error)") }
         }
@@ -60,26 +80,29 @@ enum AudioIntegrationChecks {
                 if let error = player.sync(ids: ids, volume: volume, running: true) { throw ConfigurationError.invalid(error) }
                 let buffer = AVAudioPCMBuffer(pcmFormat: graph.format, frameCapacity: 4096)!
                 var frames = 0, energy = 0.0, peak: Float = 0
-                for _ in 0..<180 {
+                for _ in 0..<540 {
                     if try graph.engine.renderOffline(4096, to: buffer) == .success {
-                        let samples = buffer.floatChannelData![0]
-                        for index in 0..<Int(buffer.frameLength) { energy += Double(samples[index]*samples[index]); peak = max(peak, abs(samples[index])) }
+                        for channel in 0..<2 {
+                            let samples = buffer.floatChannelData![channel]
+                            for index in 0..<Int(buffer.frameLength) { energy += Double(samples[index]*samples[index]); peak = max(peak, abs(samples[index])) }
+                        }
                         frames += Int(buffer.frameLength)
                     }
                 }
-                guard frames > 44100*15 else { throw ConfigurationError.invalid("Offline graph did not render a complete loop") }
-                return (sqrt(energy/Double(frames)), peak)
+                guard frames > 44100*49 else { throw ConfigurationError.invalid("Offline graph did not render a complete loop") }
+                return (sqrt(energy/Double(frames*2)), peak)
             }
             let single = try render(["lightRain"], volume: 1)
-            check((0.14...0.17).contains(single.rms) && single.peak <= 1, "rain output is reduced by one third through the real engine (RMS=\(single.rms))")
+            check(single.peak <= 1 && (0.62...0.71).contains(single.rms / (assetRMS["lightRain"] ?? 1)),
+                  "stereo recording gets the same two-thirds master gain as mono (RMS=\(single.rms))")
             let half = try render(["lightRain"], volume: 0.25)
             check((0.45...0.60).contains(half.rms/single.rms), "quarter slider provides roughly half amplitude for a more responsive control")
-            let reference = try render(["aircraft"], volume: 1)
+            let reference = try render(["ocean"], volume: 1)
             check((0.15...0.17).contains(reference.rms), "unchanged reference asset measures two-thirds of its former output (RMS=\(reference.rms))")
             let three = try render(["lightRain", "fire", "aircraft"], volume: 1)
             let all = try render(FocusNoise.allCases.map(\.rawValue), volume: 1)
             check(three.rms >= single.rms*0.80 && all.rms >= single.rms*0.80,
-                  "three and twelve layers retain single-layer loudness (RMS=\(three.rms), \(all.rms))")
+                  "three and twelve layers remain audible (RMS=\(three.rms), \(all.rms))")
             // The system limiter can overshoot by a fraction of one 16-bit PCM step.
             check(three.peak <= 1.00004 && all.peak <= 1.00004, "real peak limiter keeps multi-layer output within digital bounds (peaks=\(three.peak), \(all.peak))")
             let graph = try NoiseAudioGraph(offline: true)

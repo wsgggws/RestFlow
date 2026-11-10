@@ -7,6 +7,7 @@ func audioChecks() -> [(String, () -> Void)] {
             expectEqual(AlertTone.allCases.count, 12)
             expectEqual(AppSettings.systemSounds, AppSettings.alertSoundIDs)
             expectEqual(Set(FocusNoise.allCases.map(\.rawValue)).count, 12)
+            expectEqual(FocusNoise.allCases.allSatisfy { $0.title(in: .simplifiedChinese).count == 4 }, true)
             let s = AppSettings()
             expectEqual(s.focusNoiseEnabled, false)
             expectEqual(s.focusNoiseIDs, [])

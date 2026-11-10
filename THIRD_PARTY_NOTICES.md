@@ -17,3 +17,17 @@ The app embeds the unmodified official macOS Lottie framework. Third-party anima
 
 Edited excerpts and assembled key recordings are bundled as local loops. Provenance, pinned input hashes,
 license references and edits are documented in `Resources/Audio/README.md`, included in the application bundle.
+
+### Additional field recordings (0.17.0)
+
+- **Medium Traffic** by **IENBA**, [original](https://freesound.org/people/IENBA/sounds/865147/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **lizzie frogs long.wav** by **volivieri**, [original](https://freesound.org/people/volivieri/sounds/634612/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- **Rain_Falling_On_Ground.wav** by **ivolipa**, [original](https://freesound.org/people/ivolipa/sounds/329113/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **Wind blowing in a field in Texas, USA** by **felix.blume**, [original](https://freesound.org/people/felix.blume/sounds/217506/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **bonfire flames sizzling** by **florianreichelt**, [original](https://freesound.org/people/florianreichelt/sounds/563764/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **fire crackles** by **florianreichelt**, [original](https://freesound.org/people/florianreichelt/sounds/563766/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **Bird ambience. Coniferous forest dawn chorus.** by **SamsterBirdies**, [original](https://freesound.org/people/SamsterBirdies/sounds/745273/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **5 min of crowd chatter.  40 people.wav** by **Psykophobia**, [original](https://freesound.org/people/Psykophobia/sounds/608996/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **2016-10-06 Thunder Crack.wav** by **kingsrow**, [original](https://freesound.org/people/kingsrow/sounds/361772/), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+Modified by RestFlow: excerpting, filtering, loop crossfades and level/peak processing; fire layers two recordings and traffic joins two passages. Exact edits and source hashes are bundled in `Audio/FieldRecordings.json`. Authors do not endorse RestFlow.

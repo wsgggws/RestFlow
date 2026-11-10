@@ -56,7 +56,13 @@ private final class EngineLoopOutput: LoopAudioOutput {
         graph.engine.connect(player, to: graph.engine.mainMixerNode, format: buffer.format)
         player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
     }
-    var volume: Float { get { player.volume } set { player.volume = newValue } }
+    // The graph restores mono center attenuation. Stereo has no center attenuation,
+    // so compensate here to give both formats the same master gain.
+    private var formatGain: Float { buffer.format.channelCount == 1 ? 1 : 1 / sqrt(2) }
+    var volume: Float {
+        get { player.volume / formatGain }
+        set { player.volume = newValue * formatGain }
+    }
     var isPlaying: Bool { player.isPlaying && graph.engine.isRunning }
     func play() throws {
         if !graph.engine.isRunning { try graph.engine.start() }

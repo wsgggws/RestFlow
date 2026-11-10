@@ -10,17 +10,17 @@ public enum FocusNoise: String, CaseIterable, Sendable {
     case train, aircraft, lightRain, ocean, wind, stream, fire, night, thunder, birds, cafe, keyboard
     public func title(in language: AppLanguage) -> String {
         switch self {
-        case .train: return language.text("夜行列车", "Night train")
-        case .aircraft: return language.text("飞机客舱", "Aircraft cabin")
-        case .lightRain: return language.text("窗边细雨", "Window rain")
+        case .train: return language.text("街头车流", "Street traffic")
+        case .aircraft: return language.text("池塘蛙鸣", "Pond frogs")
+        case .lightRain: return language.text("庭院落雨", "Rain on the ground")
         case .ocean: return language.text("沙滩海浪", "Ocean surf")
-        case .wind: return language.text("旷野风声", "Open-field wind")
+        case .wind: return language.text("狂风呼啸", "Howling wind")
         case .stream: return language.text("山间溪流", "Mountain stream")
-        case .fire: return language.text("壁炉柴火", "Fireplace")
+        case .fire: return language.text("篝火噼啪", "Crackling bonfire")
         case .night: return language.text("夏夜虫鸣", "Summer crickets")
-        case .thunder: return language.text("远处雷鸣", "Distant thunder")
+        case .thunder: return language.text("电闪雷鸣", "Cracking thunder")
         case .birds: return language.text("林间鸟鸣", "Forest birds")
-        case .cafe: return language.text("街角咖啡馆", "Corner cafe")
+        case .cafe: return language.text("人声鼎沸", "Crowd chatter")
         case .keyboard: return language.text("书房键盘", "Study keyboard")
         }
     }
