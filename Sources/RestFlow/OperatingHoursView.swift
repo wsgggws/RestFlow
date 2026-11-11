@@ -57,7 +57,7 @@ struct OperatingHoursView: View {
     }
 
     private func timePicker(_ title: String, key: WritableKeyPath<OperatingSchedule, Int>) -> some View {
-        DatePicker(title, selection: Binding(get: {
+        OperatingTimePicker(selection: Binding(get: {
             let minute = schedule[keyPath: key]
             return Calendar.current.date(bySettingHour: minute / 60 % 24, minute: minute % 60, second: 0, of: Date())!
         }, set: { date in
@@ -65,8 +65,8 @@ struct OperatingHoursView: View {
             let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
             updated[keyPath: key] = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
             apply(updated)
-        }), displayedComponents: [.hourAndMinute])
-        .labelsHidden().accessibilityLabel(title).frame(width: 105)
+        }), title: title)
+        .frame(width: 105, height: 24)
     }
 
     private func apply(_ updated: OperatingSchedule) {

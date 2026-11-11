@@ -12,28 +12,27 @@ are completely offline.
 
 Nine loops use stereo PCM 16-bit / 44.1 kHz, preserving the original spatial image
 where present. Most last 48 seconds; traffic lasts 25 seconds and thunder 18 seconds.
-Traffic joins two passes with a 0.5-second overlap, removing the silent gap.
+The Mandarin crowd lasts 38 seconds. Traffic joins two passes with a 0.5-second overlap, removing the silent gap.
 Each scene uses a one-second raised-cosine loop overlap, filtering, DC removal and
 constant stereo-linked gain, followed by a 5 ms look-ahead / 80 ms release peak
 limiter at 0.92. Circular pre-roll/look-ahead keeps the limiter stable across the seam.
 The gain targets RMS 0.20 (thunder 0.22); final RMS varies with natural dynamics.
-Stream, night and keyboard retain their 0.16.0 mono 16-second / 22.05 kHz loops,
-original RMS 0.24 normalization and bytes.
+Stream, night and keyboard use mono 16-second / 22.05 kHz loops with the same
+constant-gain / local-limiter pipeline, targeting RMS 0.20. This replaces their old
+whole-waveform saturation, retaining transient detail and quiet gaps.
 
-0.18.0 changes:
-- **沙滩海浪 / ocean**: close recording of waves breaking on Boscombe Beach, UK;
-  the source's actual surf replaces the old noise synthesis.
-- **柴火燃烧 / fire**: continuous close wood-stove recording replaces the former
-  sizzling/pop layers. A mild 140 Hz bass lift supports the flame body; 11.5 kHz
-  low-pass reduces hiss. No artificial crackles or fire-like noise are synthesized.
-- **电闪雷鸣 / thunder**: removes the long quiet introduction/tail, uses 18-second
-  circulation, 120 Hz bass lift and higher scene gain. Rotate the continuous loop
-  so the first strong crack occurs within 300 ms; retain real rolling thunder.
-  Lightning itself has no sound. This is an intentionally forceful scene.
-- **人声鼎沸 / cafe**: Mandarin-speaking park/mahjong crowd is the primary recording,
-  with a quieter Mandarin/Quebecois restaurant layer (0.70 relative RMS). Removes
-  the previous English-only UK studio crowd. Speech language is documented by the
-  original recordist, not inferred from automated waveform tests.
+0.19.0 changes:
+- **人声鼎沸 / cafe** uses one Beijing restaurant recording explicitly described by
+  its recordist as Mandarin conversation. The former overseas park/restaurant
+  mixture is removed; no Cantonese or other-language layer is added. Source
+  metadata documents language; automated waveform checks do not identify speech.
+- All twelve scenes receive mild source-specific EQ to reduce low-frequency boom
+  and excessive hiss while retaining rain drops, surf, fire crackles and voices.
+  Filter values are pinned in `FieldRecordings.json`, including mono profiles.
+- Recordings retain their original speed, pitch and natural pauses. No artificial
+  density or accelerated event rhythm is added. Keyboard phrases retain irregular
+  real key-down/up recordings; thunder still starts with a strong real strike
+  within 300 ms and retains rolling thunder.
 
 Runtime uses equal-power mixing, a square-root volume slider and a 2/3 amplitude
 master gain (−3.52 dB relative to 0.15.0), followed by a shared system peak limiter.
@@ -68,6 +67,5 @@ No endorsement by any author is implied.
 | 林间鸟鸣 / birds | Bird ambience. Coniferous forest dawn chorus. — **SamsterBirdies** | [Original](https://freesound.org/people/SamsterBirdies/sounds/745273/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 电闪雷鸣 / thunder | 2016-10-06 Thunder Crack.wav — **kingsrow** | [Original](https://freesound.org/people/kingsrow/sounds/361772/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 沙滩海浪 / ocean | Sea - Ocean - Beach - Close - MP3 — **nebulousflynn** | [Original](https://freesound.org/people/nebulousflynn/sounds/220531/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
-| 人声鼎沸 / cafe (primary) | park light crowd mahjong players chinese ext walla old men mandarin voices3 NYC, USA.flac — **kyles** | [Original](https://freesound.org/people/kyles/sounds/452973/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| 人声鼎沸 / cafe (secondary) | crowd int medium busy chinese restaurant mandarin and quebecois voices Montreal, Canada.flac — **kyles** | [Original](https://freesound.org/people/kyles/sounds/455717/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| 人声鼎沸 / cafe | restaurant busy full walla mandarin active Beijing, China.flac — **kyles** | [Original](https://freesound.org/people/kyles/sounds/452408/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | 柴火燃烧 / fire | Wood Burning Stove — **nebulousflynn** | [Original](https://freesound.org/people/nebulousflynn/sounds/269062/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |

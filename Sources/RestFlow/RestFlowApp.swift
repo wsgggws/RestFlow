@@ -9,6 +9,7 @@ enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-settings-integration") { exit(Int32(SettingsIntegrationChecks.run())) }
         if CommandLine.arguments.contains("--check-wellbeing-integration") { exit(WellbeingIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-activity-integration") { exit(ActivityIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-name-integration") {
@@ -154,13 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(phaseItem)
         phaseMenuItem = phaseItem
         menu.addItem(.separator())
-        addItem(model.isPaused ? model.text("继续计时", "Resume timer") : model.text("暂停计时", "Pause timer"),
-                action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
-        addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
-        addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
-        if model.settings.deferEnabled && !model.phase.isBreak {
-            addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
-        }
+        addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
         addItem(model.text("启用白噪音", "Enable white noise"), action: #selector(toggleFocusNoise),
                 shortcut: model.settings.focusNoiseShortcut, checked: model.settings.focusNoiseEnabled, to: menu)
         noiseToggleMenuItem = menu.items.last
@@ -169,9 +164,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         choicesItem.submenu = choices.menu
         menu.addItem(choicesItem)
         noiseMenu = choices
+        addItem(model.text("现在休息", "Rest now"), action: #selector(restNow), shortcut: model.settings.restNowShortcut, to: menu)
+        addItem(model.isPaused ? model.text("继续计划", "Resume plan") : model.text("暂停计划", "Pause plan"),
+                action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
+        addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
+        if model.settings.deferEnabled && !model.phase.isBreak {
+            addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
+        }
         if model.phase.isBreak { addItem(model.text("提前结束休息", "End break"), action: #selector(endBreak), to: menu) }
         menu.addItem(.separator())
-        addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
         addItem(model.text("菜单栏显示时间", "Show time in menu bar"), action: #selector(toggleMenuBarTime),
                 checked: model.settings.showMenuBarTime, to: menu)
         addItem(model.text("开机启动", "Launch at login"), action: #selector(toggleLaunchAtLogin),
@@ -314,11 +315,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         check(item(#selector(toggleFocusNoise))?.state == .off &&
               (try? ConfigurationStore(directory: directory).load(orCreate: settings).focusNoiseEnabled) == false,
               "native noise action disables and persists the unchecked preference")
-        let restIndex = menu.items.firstIndex { $0.action == #selector(restNow) }!
-        check(menu.items[restIndex + 1].action == #selector(deferBreak) &&
-              menu.items[restIndex + 2].action == #selector(toggleFocusNoise) &&
-              menu.items[restIndex + 3].submenu === delegate.noiseMenu?.menu,
-              "menu orders Rest now, Delay, Enable noise, and Change noise")
+        let actionItems = menu.items.filter { !$0.isSeparatorItem }.dropFirst()
+        let primary = Array(actionItems.prefix(6))
+        check(primary.count == 6 && primary[0].action == #selector(showSettings) &&
+              primary[1].action == #selector(toggleFocusNoise) && primary[2].submenu === delegate.noiseMenu?.menu &&
+              primary[3].action == #selector(restNow) && primary[4].action == #selector(togglePause) &&
+              primary[5].action == #selector(restart),
+              "primary menu order is Settings, Enable noise, Change noise, Rest now, Pause plan, Restart")
+        check(item(#selector(togglePause))?.title == "继续计划", "paused plan offers Resume plan")
         let noiseMenu = delegate.noiseMenu!.menu
         check(noiseMenu.items.filter { !$0.isSeparatorItem }.count == 13,
               "hover submenu contains Random and exactly twelve specific noises")
@@ -366,10 +370,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         delegate.model.restart()
         delegate.menuWillOpen(menu)
         let settingsIndex = menu.items.firstIndex { $0.action == #selector(showSettings) }!
-        check(menu.items[settingsIndex + 1].action == #selector(toggleMenuBarTime) &&
-              menu.items[settingsIndex + 2].action == #selector(toggleLaunchAtLogin) &&
-              menu.items[settingsIndex + 3].isSeparatorItem && menu.items[settingsIndex + 4].action == #selector(quit),
-              "menu toggles sit between Settings and Quit")
+        let timeIndex = menu.items.firstIndex { $0.action == #selector(toggleMenuBarTime) }!
+        check(timeIndex > settingsIndex && menu.items[timeIndex + 1].action == #selector(toggleLaunchAtLogin) &&
+              menu.items[timeIndex + 2].isSeparatorItem && menu.items[timeIndex + 3].action == #selector(quit),
+              "persistent checkmark preferences stay below primary actions and above Quit")
+        check(item(#selector(togglePause))?.title == "暂停计划", "running plan offers Pause plan")
         check(item(#selector(toggleMenuBarTime))?.state == .on && item(#selector(toggleLaunchAtLogin))?.state == .off,
               "native checkmarks reflect initial preferences")
         click(#selector(toggleMenuBarTime))

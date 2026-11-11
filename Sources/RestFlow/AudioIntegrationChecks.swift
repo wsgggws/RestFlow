@@ -109,7 +109,7 @@ enum AudioIntegrationChecks {
             let half = try render(["lightRain"], volume: 0.25)
             check((0.45...0.60).contains(half.rms/single.rms), "quarter slider provides roughly half amplitude for a more responsive control")
             let reference = try render(["stream"], volume: 1)
-            check((0.15...0.17).contains(reference.rms), "unchanged reference asset measures two-thirds of its former output (RMS=\(reference.rms))")
+            check((0.62...0.71).contains(reference.rms / (assetRMS["stream"] ?? 1)), "mono recording retains the same two-thirds master gain (RMS=\(reference.rms))")
             let three = try render(["lightRain", "fire", "aircraft"], volume: 1)
             let all = try render(FocusNoise.allCases.map(\.rawValue), volume: 1)
             check(three.rms >= single.rms*0.80 && all.rms >= single.rms*0.80,

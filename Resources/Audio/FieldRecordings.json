@@ -63,24 +63,6 @@
       "sourceURL": "https://freesound.org/people/nebulousflynn/sounds/220531/",
       "license": "https://creativecommons.org/licenses/by/4.0/"
     },
-    "chineseVoices": {
-      "file": "chineseVoices-452973.mp3",
-      "url": "https://cdn.freesound.org/previews/452/452973_612689-hq.mp3",
-      "sha256": "87cbc578a4e2296a9a72a19df4ac7b2a65502607d81d671c43e91fe9625316eb",
-      "author": "kyles",
-      "title": "park light crowd mahjong players chinese ext walla old men mandarin voices3 NYC, USA.flac",
-      "sourceURL": "https://freesound.org/people/kyles/sounds/452973/",
-      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
-    },
-    "chineseRestaurant": {
-      "file": "chineseRestaurant-455717.mp3",
-      "url": "https://cdn.freesound.org/previews/455/455717_612689-hq.mp3",
-      "sha256": "f1dfbdbfa41b487195a57100945ed2805149d3ee83bb36027d4f2f6e30b65591",
-      "author": "kyles",
-      "title": "crowd int medium busy chinese restaurant mandarin and quebecois voices Montreal, Canada.flac",
-      "sourceURL": "https://freesound.org/people/kyles/sounds/455717/",
-      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
-    },
     "burningLogs": {
       "file": "burningLogs-269062.mp3",
       "url": "https://cdn.freesound.org/previews/269/269062_2962342-hq.mp3",
@@ -89,6 +71,15 @@
       "title": "Wood Burning Stove",
       "sourceURL": "https://freesound.org/people/nebulousflynn/sounds/269062/",
       "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "beijingMandarin": {
+      "file": "beijingMandarin-452408.mp3",
+      "url": "https://cdn.freesound.org/previews/452/452408_612689-hq.mp3",
+      "sha256": "9faa9890d1ae39b007589435d71e228f1c7f3b0ac517840a4e8c8389a6d1dd71",
+      "author": "kyles",
+      "title": "restaurant busy full walla mandarin active Beijing, China.flac",
+      "sourceURL": "https://freesound.org/people/kyles/sounds/452408/",
+      "license": "https://creativecommons.org/publicdomain/zero/1.0/"
     }
   },
   "scenes": {
@@ -104,28 +95,32 @@
           11.5
         ]
       ],
-      "seconds": 25
+      "seconds": 25,
+      "filters": "highpass=f=70,lowpass=f=11000,equalizer=f=2200:t=q:w=0.8:g=1"
     },
     "aircraft": {
       "source": "frogs",
       "start": 60,
-      "seconds": 48
+      "seconds": 48,
+      "filters": "highpass=f=110,lowpass=f=10000,equalizer=f=1700:t=q:w=0.8:g=1"
     },
     "lightRain": {
       "source": "groundRain",
       "start": 4,
-      "seconds": 48
+      "seconds": 48,
+      "filters": "highpass=f=140,lowpass=f=12500,equalizer=f=3800:t=q:w=0.8:g=1.5"
     },
     "wind": {
       "source": "wildWind",
       "start": 40,
-      "seconds": 48
+      "seconds": 48,
+      "filters": "highpass=f=45,lowpass=f=9000,equalizer=f=240:t=q:w=0.8:g=-2.5"
     },
     "fire": {
       "source": "burningLogs",
       "start": 12,
       "seconds": 48,
-      "filters": "highpass=f=35,lowpass=f=11500,bass=g=3:f=140:w=0.8"
+      "filters": "highpass=f=45,lowpass=f=12500,bass=g=1.5:f=140:w=0.8,equalizer=f=3200:t=q:w=0.8:g=1"
     },
     "thunder": {
       "source": "thunderCrack",
@@ -133,29 +128,39 @@
       "seconds": 18,
       "rotateSeconds": 1.05,
       "targetRMS": 0.22,
-      "filters": "highpass=f=25,lowpass=f=14000,bass=g=4:f=120:w=0.8"
+      "filters": "highpass=f=25,lowpass=f=14000,bass=g=3:f=120:w=0.8,equalizer=f=2200:t=q:w=0.8:g=1"
     },
     "birds": {
       "source": "dawnBirds",
       "start": 60,
-      "seconds": 48
+      "seconds": 48,
+      "filters": "highpass=f=180,lowpass=f=13000,equalizer=f=3400:t=q:w=0.8:g=1"
     },
     "cafe": {
-      "source": "chineseVoices",
-      "start": 30,
-      "seconds": 48,
-      "layers": [
-        {
-          "source": "chineseRestaurant",
-          "start": 20,
-          "relativeGain": 0.7
-        }
-      ]
+      "source": "beijingMandarin",
+      "start": 2,
+      "seconds": 38,
+      "filters": "highpass=f=140,lowpass=f=9000,equalizer=f=350:t=q:w=0.8:g=-2,equalizer=f=2200:t=q:w=0.8:g=1.5"
     },
     "ocean": {
       "source": "beachSurf",
       "start": 10,
-      "seconds": 48
+      "seconds": 48,
+      "filters": "highpass=f=55,lowpass=f=12000,equalizer=f=180:t=q:w=0.8:g=-2,equalizer=f=3000:t=q:w=0.8:g=1"
+    }
+  },
+  "legacyProfiles": {
+    "stream": {
+      "filters": "highpass=f=90,lowpass=f=10000,equalizer=f=2400:t=q:w=0.8:g=1",
+      "targetRMS": 0.2
+    },
+    "night": {
+      "filters": "highpass=f=180,lowpass=f=10500,equalizer=f=5800:t=q:w=0.8:g=-1.5",
+      "targetRMS": 0.2
+    },
+    "keyboard": {
+      "filters": "highpass=f=100,lowpass=f=10000,equalizer=f=2000:t=q:w=0.8:g=1",
+      "targetRMS": 0.2
     }
   }
 }

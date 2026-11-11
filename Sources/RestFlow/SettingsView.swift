@@ -284,15 +284,20 @@ struct SettingsView: View {
                 } label: { Label(t("休息预告", "Break prealert"), systemImage: "bell") }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
-                        Picker(t("提示音", "Alert sound"), selection: Binding(
-                            get: { !model.settings.soundEnabled ? AppSettings.noSoundID : (model.settings.soundPath == nil ? model.settings.soundName : "__custom__") },
-                            set: { model.selectSound($0) })) {
-                            Text(t("无", "None")).tag(AppSettings.noSoundID)
-                            Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
-                            ForEach(model.settings.availableSounds, id: \.rawValue) { tone in
-                                Text(tone.title(in: model.settings.language)).tag(tone.rawValue)
+                        HStack {
+                            Picker(t("提示音", "Alert sound"), selection: Binding(
+                                get: { !model.settings.soundEnabled ? AppSettings.noSoundID : (model.settings.soundPath == nil ? model.settings.soundName : "__custom__") },
+                                set: { model.selectSound($0) })) {
+                                Text(t("无", "None")).tag(AppSettings.noSoundID)
+                                Text(t("随机", "Random")).tag(AppSettings.randomSoundID)
+                                ForEach(model.settings.availableSounds, id: \.rawValue) { tone in
+                                    Text(tone.title(in: model.settings.language)).tag(tone.rawValue)
+                                }
+                                if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
                             }
-                            if model.settings.soundPath != nil { Text(t("自定义", "Custom")).tag("__custom__") }
+                            deleteButton(t("移除当前提示音", "Hide selected sound"), disabled: !model.settings.soundEnabled || (model.settings.soundPath == nil && AlertTone(rawValue: model.settings.soundName) == nil)) {
+                                model.hideSelectedSound()
+                            }
                         }
                         HStack {
                             if !model.settings.excludedSoundIDs.isEmpty {
@@ -302,9 +307,6 @@ struct SettingsView: View {
                                 Text(model.soundURL?.lastPathComponent ?? path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
-                            deleteButton(t("移除当前提示音", "Hide selected sound"), disabled: !model.settings.soundEnabled || (model.settings.soundPath == nil && AlertTone(rawValue: model.settings.soundName) == nil)) {
-                                model.hideSelectedSound()
-                            }
                             Button(t("导入声音…", "Import sound…")) { model.importSound() }
                             if model.settings.soundPath != nil {
                                 Button(t("使用内置声音", "Use built-in sound")) { model.settings.soundPath = nil }

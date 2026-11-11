@@ -5,18 +5,15 @@ Python standard library plus ffmpeg. See Resources/Audio/README.md for provenanc
 """
 import math
 import random
-import struct
-import wave
 import sys
 from pathlib import Path
 from audio_sources import SOURCES, recorded_values
-from field_recordings import SCENES, write_recorded_loop
+from field_recordings import CATALOG, SCENES, write_recorded_loop, write_pcm_loop
 
 ROOT = Path(__file__).resolve().parents[1] / 'Resources' / 'Audio'
 RATE = 22050
 SECONDS = 16
 IDS = ['train', 'aircraft', 'lightRain', 'ocean', 'wind', 'stream', 'fire', 'night', 'thunder', 'birds', 'cafe', 'keyboard']
-TARGET_RMS = .24
 
 
 def generate(name, seed):
@@ -33,20 +30,8 @@ def write_loop(name, values):
         weight = .5-.5*math.cos(math.pi*i/(RATE-1))
         values[i] = values[RATE*SECONDS+i]*(1-weight) + values[i]*weight
     values = values[:RATE*SECONDS]
-    mean = sum(values)/len(values)
-    values = [v-mean for v in values]
-    # Equal RMS rather than peak-only normalization: transient-rich rain/fire stays audible.
-    # Smooth saturation contains sparse transients without hard digital clipping.
-    lo, hi = 0.0, 1000.0
-    for _ in range(24):
-        gain = (lo+hi)/2
-        rms = math.sqrt(sum((.92*math.tanh(v*gain/.92))**2 for v in values)/len(values))
-        if rms < TARGET_RMS: lo = gain
-        else: hi = gain
-    samples = [round(.92*math.tanh(v*hi/.92)*32767) for v in values]
-    with wave.open(str(ROOT / f'noise-{name}.wav'), 'wb') as out:
-        out.setparams((1, 2, RATE, 0, 'NONE', 'not compressed'))
-        out.writeframes(struct.pack('<%dh' % len(samples), *samples))
+    profile = CATALOG['legacyProfiles'][name]
+    write_pcm_loop(name, values, ROOT, RATE, 1, SECONDS, profile['targetRMS'], profile['filters'])
 
 if __name__ == '__main__':
     ROOT.mkdir(parents=True, exist_ok=True)

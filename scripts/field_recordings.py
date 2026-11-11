@@ -63,15 +63,15 @@ def write_recorded_loop(name, root):
     scene = SCENES[name]
     seconds = scene['seconds']
     if 'segments' in scene:
-        parts = [decode(scene['source'], start, duration) for start, duration in scene['segments']]
+        parts = [decode(scene['source'], start, duration, scene.get('filters')) for start, duration in scene['segments']]
         overlap = round(.5*RATE)*CHANNELS
         values = parts[0][:-overlap] + blend(parts[0][-overlap:], parts[1][:overlap], overlap//CHANNELS) + parts[1][overlap:]
     else:
         values = decode(scene['source'], scene['start'], seconds+1, scene.get('filters'))
     layers = scene.get('layers', [scene['layer']] if 'layer' in scene else [])
     for layer in layers:
-        extra = decode(layer['source'], layer['start'], seconds+1)
-        # Actual flame bed plus actual wood pops, retaining each recording's dynamics.
+        extra = decode(layer['source'], layer['start'], seconds+1, layer.get('filters'))
+        # Keep layered field recordings' relative dynamics without changing their speed.
         bed_rms = math.sqrt(sum(v*v for v in values)/len(values))
         extra_rms = math.sqrt(sum(v*v for v in extra)/len(extra))
         gain = layer['relativeGain']*bed_rms/extra_rms
@@ -84,24 +84,35 @@ def write_recorded_loop(name, root):
     rotation = round(scene.get('rotateSeconds', 0)*RATE)*CHANNELS
     if rotation:
         values = values[rotation:] + values[:rotation]
-    # Remove DC, then apply a common stereo gain and a look-ahead peak limiter.
-    # Unlike waveshaping, only short loud events attenuate their neighborhood;
-    # the original timbre, natural gaps and stereo image are retained.
-    means = [sum(values[c::CHANNELS])/(count/CHANNELS) for c in range(CHANNELS)]
-    values = array.array('f', (v-means[i%CHANNELS] for i,v in enumerate(values)))
+    write_pcm_loop(name, values, root, RATE, CHANNELS, seconds, scene.get('targetRMS', .20))
+
+
+def write_pcm_loop(name, values, root, rate, channels, seconds, target_rms, filters=None):
+    """Linked local peak control preserves real timing and avoids global waveshaping."""
+    count = round(seconds*rate)*channels
+    values = array.array('f', values)
+    if filters:
+        if sys.byteorder != 'little': values.byteswap()
+        raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-f', 'f32le', '-ar', str(rate),
+                                       '-ac', str(channels), '-i', '-', '-af', filters, '-f', 'f32le', '-'],
+                                      input=values.tobytes())
+        values = array.array('f'); values.frombytes(raw)
+        if sys.byteorder != 'little': values.byteswap()
+    means = [sum(values[c::channels])/(count/channels) for c in range(channels)]
+    values = array.array('f', (v-means[i%channels] for i,v in enumerate(values)))
     rms = math.sqrt(sum(v*v for v in values)/count)
-    target_rms = scene.get('targetRMS', .20)
     gain = target_rms/rms
-    # Warm up the limiter across the circular seam and provide look-ahead at the end.
+    # Warm up local peak control across the circular seam; retain original durations.
+    overlap = rate*channels
     values = values[-overlap:] + values + values[:overlap]
     if sys.byteorder != 'little': values.byteswap()
     pcm = subprocess.check_output([
-        'ffmpeg', '-v', 'error', '-f', 'f32le', '-ar', str(RATE), '-ac', str(CHANNELS), '-i', '-',
+        'ffmpeg', '-v', 'error', '-f', 'f32le', '-ar', str(rate), '-ac', str(channels), '-i', '-',
         '-af', f'volume={gain:.12f},alimiter=limit=0.92:attack=5:release=80:level=false:latency=true,atrim=start=1:duration={seconds}',
         '-f', 's16le', '-'], input=values.tobytes())
     if len(pcm) != count*2:
         raise ValueError(f'Limiter changed loop duration: {name}')
     with wave.open(str(root/f'noise-{name}.wav'), 'wb') as out:
-        out.setparams((CHANNELS, 2, RATE, 0, 'NONE', 'not compressed'))
+        out.setparams((channels, 2, rate, 0, 'NONE', 'not compressed'))
         out.writeframes(pcm)
-    print(f'  {seconds}s stereo, input RMS={rms:.4f}, gain={gain:.3f}, look-ahead peak limit=0.92')
+    print(f'  {seconds}s / {channels}ch, input RMS={rms:.4f}, gain={gain:.3f}, look-ahead peak limit=0.92')

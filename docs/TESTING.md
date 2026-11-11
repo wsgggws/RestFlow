@@ -7,6 +7,7 @@
 `./scripts/build-app.sh`：Release 构建、应用包和 Lottie 框架签名验证。构建后运行：
 
 ```sh
+dist/RestFlow.app/Contents/MacOS/RestFlow --check-settings-integration
 dist/RestFlow.app/Contents/MacOS/RestFlow --check-system-integration
 dist/RestFlow.app/Contents/MacOS/RestFlow --check-break-integration
 dist/RestFlow.app/Contents/MacOS/RestFlow --check-menu-integration
@@ -14,7 +15,22 @@ dist/RestFlow.app/Contents/MacOS/RestFlow --check-activity-integration
 dist/RestFlow.app/Contents/MacOS/RestFlow --check-wellbeing-integration
 ```
 
-第一项含 10 项原生检查，验证 Carbon 注册、事件分发、绑定转移、系统保留／已占用组合的拒绝及失败回滚，并读取登录项目状态。第二项含 40 项原生检查，使用临时配置、可控时钟及实际 AppKit 窗口，验证短休息倒计时、背景 alpha、失焦后的 Esc、自然结束、无内容时释放键盘及短／长阶段独立判断。第三项含 36 项菜单检查，经过真实状态刷新入口验证 tooltip 不存在、菜单倒计时更新及隐藏菜单栏时间后的状态，另验证声景子菜单的连续多选、随机重抽和顺序。菜单检查还通过原生 action 验证两个开关的勾号、保存、登录批准入口及失败回滚，登录服务使用注入的测试替身。诊断不修改用户配置或登录项目，但第二项会短暂显示休息窗口。`--check-name-integration` 在 en／zh-Hans／zh-Hant 三种语言各执行 6 项检查，验证资源、系统选名、文件身份与双语搜索别名。`--check-activity-integration` 注入单调及墙上时间，17 项检查验证午休精确冻结、自动／手动暂停区别、按实际秒数统计、休息不足、长休息周期、睡眠及系统时钟修正。`--check-wellbeing-integration` 130 项检查覆盖闲置、锁屏、睡眠、手动暂停、恢复、独立预览、延后去重／过期 action、声景频段及真实混音输出。GitHub Actions 执行上述检查。
+设置检查含 14 项，使用真实运行时段视图和本地鼠标移动事件验证四个编辑器框内保留焦点、框外释放选中分段，以及不抢走其他控件焦点。系统检查含 10 项原生检查，验证 Carbon 注册、事件分发、绑定转移、系统保留／已占用组合的拒绝及失败回滚，并读取登录项目状态。休息检查含 40 项原生检查，使用临时配置、可控时钟及实际 AppKit 窗口，验证短休息倒计时、背景 alpha、失焦后的 Esc、自然结束、无内容时释放键盘及短／长阶段独立判断。菜单检查含 38 项，经过真实状态刷新入口验证 tooltip 不存在、菜单倒计时更新及隐藏菜单栏时间后的状态，另验证声景子菜单的连续多选、随机重抽和顺序。菜单检查还通过原生 action 验证两个开关的勾号、保存、登录批准入口及失败回滚，登录服务使用注入的测试替身。诊断不修改用户配置或登录项目，但休息检查会短暂显示休息窗口。`--check-name-integration` 在 en／zh-Hans／zh-Hant 三种语言各执行 6 项检查，验证资源、系统选名、文件身份与双语搜索别名。`--check-activity-integration` 注入单调及墙上时间，17 项检查验证午休精确冻结、自动／手动暂停区别、按实际秒数统计、休息不足、长休息周期、睡眠及系统时钟修正。`--check-wellbeing-integration` 130 项检查覆盖闲置、锁屏、睡眠、手动暂停、恢复、独立预览、延后去重／过期 action、声景频段及真实混音输出。GitHub Actions 执行上述检查。
+
+## 0.19.0 本机结果
+
+Apple Silicon / macOS 27.2：
+
+| 场景 | 结果 |
+|---|---|
+| 自动化 | 62 项核心、14 项设置、10 项系统、40 项休息、38 项菜单、17 项时段／统计、130 项离开／预览／音频、18 项名称，共 329 项通过；Release 构建和签名通过 |
+| 普通话实录 | 人声鼎沸改为 kyles 在北京录制的普通话餐厅人群单一片段，移除旧公园及混合语言层；作者标注、CC0 许可、输入 SHA-256 与处理参数随包提供 |
+| 12 项声景 | 全部调整针对性高低通及轻度均衡；溪流、虫鸣和键盘由整段饱和改为恒定增益及局部峰值限制，保留真实节奏、停顿和瞬态，不改变语速／音高；全部重复生成后逐字节一致 |
+| 音频图 | 所有声景格式、峰值、循环接缝及真实 AVAudioEngine 单／多层输出通过；3／12 层 RMS 0.1118／0.1109；滑杆、静音／恢复、配置冲突回滚和雷鸣首 300 ms 起声回归通过 |
+| 时间框 | 修复前原生 NSDatePicker 离开编辑后仍保留小时／分钟选择；改用显式结束自身编辑的原生控件。14 项检查验证实际视图的框内／框外鼠标事件与其他焦点保护；GUI 逐一点击四个时间框后点空白处，焦点和蓝色高亮清除，再次编辑和键盘增减正常 |
+| 布局／菜单 | GUI 确认提示音及删除按钮同行，导入独立一行；通过同一个原生菜单的调试入口核对设置、启用、更换、现在休息、暂停／继续计划、重新开始顺序；原生 action、勾选、多选和持久化回归通过 |
+
+音频语言以原录音者的北京／Mandarin 标注为依据，未声称完成逐句转录或人耳听感评审；频段／峰值测试不能证明主观自然程度。GUI 使用独立 bundle 和 `.build/190-ui-config`，未修改真实偏好或登录项目。未新增外接音频设备、多屏热插拔或权限实测，范围见文末。
 
 ## 0.18.0 本机结果
 
