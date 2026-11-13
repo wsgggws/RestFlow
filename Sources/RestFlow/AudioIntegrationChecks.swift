@@ -200,7 +200,7 @@ enum AudioIntegrationChecks {
             app.settings.focusNoiseVolume = 0.3
             wall = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12, minute: 15))!
             app.settings.operatingSchedule = OperatingSchedule()
-            check(app.isOutsideOperatingHours && playingCount() == 0, "lunch cutoff silences focus noise")
+            check(app.isOutsideOperatingHours && playingCount() == 3, "outside hours retain independently enabled noise while the timer freezes")
             app.previewBreak(); check(playingCount() == 0, "outside-hours preview stays silent"); app.endBreak()
             app.settings.operatingSchedule.enabled = false
             let accepted = app.settings
@@ -256,6 +256,7 @@ enum AudioIntegrationChecks {
         _ = failing.sync(ids: ["lightRain"], volume: 0.3, running: true)
         check(error != nil && loads == 1, "decoder failure is cached rather than retried every tick")
         failing.stop()
+        failures += AudioOutputIntegrationChecks.run()
         return failures
     }
 }

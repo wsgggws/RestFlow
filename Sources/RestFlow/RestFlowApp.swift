@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // A changing tooltip can linger at the pointer; keep the countdown in the menu instead.
         statusItem.button?.toolTip = nil
         phaseMenuItem?.title = model.menuStatusText
-        noiseToggleMenuItem?.state = model.settings.focusNoiseEnabled ? .on : .off
+        noiseToggleMenuItem?.state = model.isFocusNoiseEnabled ? .on : .off
         noiseMenu?.refresh()
         statusItem.button?.setAccessibilityValue(model.menuStatusText)
     }
@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(.separator())
         addItem(model.text("设置…", "Settings…"), action: #selector(showSettings), to: menu)
         addItem(model.text("启用白噪音", "Enable white noise"), action: #selector(toggleFocusNoise),
-                shortcut: model.settings.focusNoiseShortcut, checked: model.settings.focusNoiseEnabled, to: menu)
+                shortcut: model.settings.focusNoiseShortcut, checked: model.isFocusNoiseEnabled, to: menu)
         noiseToggleMenuItem = menu.items.last
         let choices = FocusNoiseMenu(model: model) { [weak self] in self?.showConfigurationErrorIfNeeded() }
         let choicesItem = NSMenuItem(title: model.text("更换白噪音", "Change white noise"), action: nil, keyEquivalent: "")

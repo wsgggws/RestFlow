@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
                     configurationError = error.localizedDescription
                 }
             }
+            if !oldValue.focusNoiseEnabled && settings.focusNoiseEnabled { noiseOutputLost = false }
             engine.plan = settings.plan
             synchronizeOperatingHours()
             flushStatistics()
@@ -63,6 +64,7 @@ final class AppModel: ObservableObject {
     private var awayResetAt: TimeInterval?
     private var idlePauseAt: TimeInterval?
     private var screenLocked = false
+    private var isSleeping = false
     private var lockObservers: [NSObjectProtocol] = []
     private let idleSeconds: () -> TimeInterval
     @Published private(set) var isOutsideOperatingHours = false
@@ -86,6 +88,9 @@ final class AppModel: ObservableObject {
     private var noiseFocusToken: String?
     private var noiseRandomWasEnabled = false
     let focusNoise: FocusNoisePlayer
+    private let audioOutput: (any AudioOutputMonitoring)?
+    @Published private(set) var noiseOutputLost = false
+    var isFocusNoiseEnabled: Bool { settings.focusNoiseEnabled && !noiseOutputLost }
     @Published private(set) var mediaIsValid = true
     let shortcuts = ShortcutController()
     let loginItem: any LoginItemManaging
@@ -113,10 +118,12 @@ final class AppModel: ObservableObject {
     private var now: TimeInterval { clock() }
 
     init(directory: URL? = nil, loginItem: (any LoginItemManaging)? = nil, focusNoise: FocusNoisePlayer? = nil,
+         audioOutput: (any AudioOutputMonitoring)? = nil,
          idleSeconds: (() -> TimeInterval)? = nil,
          wallClock: @escaping () -> Date = Date.init,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.focusNoise = focusNoise ?? FocusNoisePlayer()
+        self.audioOutput = audioOutput ?? (directory == nil ? AudioOutputMonitor() : nil)
         self.clock = clock
         self.idleSeconds = idleSeconds ?? (directory == nil ? {
             CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
@@ -152,6 +159,7 @@ final class AppModel: ObservableObject {
             isPaused = true
         }
         lastObservation = (clock(), wallClock())
+        self.audioOutput?.start { [weak self] lost in self?.audioOutputChanged(lost: lost) }
         synchronizeOperatingHours()
         publish(at: clock())
     }
@@ -232,7 +240,29 @@ final class AppModel: ObservableObject {
     }
     var mediaURL: URL? { configuration.resolve(settings.mediaPath) }
     var soundURL: URL? { configuration.resolve(settings.soundPath) }
-    func toggleFocusNoise() { settings.toggleFocusNoise() }
+    func toggleFocusNoise() {
+        if noiseOutputLost {
+            var updated = settings
+            updated.focusNoiseEnabled = false
+            updated.toggleFocusNoise()
+            settings = updated
+            if configurationError == nil {
+                noiseOutputLost = false
+                synchronizeFocusNoise()
+                onRefresh?()
+            }
+        } else { settings.toggleFocusNoise() }
+    }
+
+    private func audioOutputChanged(lost: Bool) {
+        // Silence first. A failed configuration save must never leak audio to a fallback speaker.
+        focusNoise.resetOutput()
+        if lost && settings.focusNoiseEnabled {
+            noiseOutputLost = true
+            settings.focusNoiseEnabled = false
+        } else { synchronizeFocusNoise() }
+        onRefresh?()
+    }
 
     func toggleFocusNoiseSelection(_ noise: FocusNoise) {
         var updated = settings
@@ -303,6 +333,7 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        audioOutput?.stop()
         if isPreview { finishPreview() }
         accountElapsed()
         synchronizeOperatingHours()
@@ -320,6 +351,7 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
+        audioOutput?.refresh()
         var current = now
         if current >= nextConfigCheck {
             nextConfigCheck = current + 1
@@ -583,8 +615,9 @@ final class AppModel: ObservableObject {
             noiseRandomWasEnabled = settings.focusNoiseRandom
         }
         resolvedNoiseIDs = settings.focusNoiseRandom ? randomNoiseIDs : settings.focusNoiseIDs
-        let retainMix = settings.focusNoiseEnabled && (phase == .work || isPreview)
-        let running = retainMix && !isPreview && !isPaused && !isAway && !isOutsideOperatingHours && !screenLocked
+        let retainMix = isFocusNoiseEnabled && (phase == .work || isPreview)
+        let eligible = isOutsideOperatingHours || (!isPaused && !isAway)
+        let running = retainMix && eligible && !isPreview && !screenLocked && !isSleeping
         let error = focusNoise.sync(ids: retainMix ? resolvedNoiseIDs : [], volume: settings.focusNoiseVolume, running: running)
         let message = error.map { text("白噪音无法播放：", "Unable to play focus noise: ") + $0 }
         if focusNoiseError != message { focusNoiseError = message }
@@ -593,7 +626,8 @@ final class AppModel: ObservableObject {
     func willSleep() {
         accountElapsed()
         flushStatistics()
-        guard !engine.isPaused else { return }
+        isSleeping = true
+        guard !engine.isPaused else { publish(at: now); return }
         engine.pause(at: now)
         resumeAfterSleep = true
         feedback.stop()
@@ -602,10 +636,12 @@ final class AppModel: ObservableObject {
     }
 
     func didWake() {
+        isSleeping = false
         lastObservation = (now, wallClock())
-        guard resumeAfterSleep else { return }
-        resumeAfterSleep = false
-        engine.resume(at: now)
+        if resumeAfterSleep {
+            resumeAfterSleep = false
+            engine.resume(at: now)
+        }
         refresh()
     }
 

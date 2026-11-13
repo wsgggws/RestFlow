@@ -31,9 +31,9 @@ struct SettingsView: View {
             }
 
             TabView {
+                generalTab.tabItem { Label(t("通用", "General"), systemImage: "gearshape") }
                 planTab.tabItem { Label(t("计划", "Schedule"), systemImage: "timer") }
                 appearanceTab.tabItem { Label(t("休息", "Break"), systemImage: "photo") }
-                generalTab.tabItem { Label(t("通用", "General"), systemImage: "gearshape") }
                 StatisticsView(model: model).tabItem { Label(t("统计", "Statistics"), systemImage: "chart.bar") }
             }.padding(.horizontal, 16).padding(.bottom, 12)
 
@@ -224,7 +224,7 @@ struct SettingsView: View {
     private var noiseControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(t("启用白噪音", "Enable white noise"), isOn: Binding(
-                get: { model.settings.focusNoiseEnabled }, set: { _ in model.toggleFocusNoise() }))
+                get: { model.isFocusNoiseEnabled }, set: { _ in model.toggleFocusNoise() }))
             HStack {
                 DisclosureGroup(t("声音选择", "Noise selection"), isExpanded: $noiseChoices.expanded) { EmptyView() }
                 Spacer()

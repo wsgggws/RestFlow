@@ -134,4 +134,9 @@ final class FocusNoisePlayer {
         outputs.values.forEach { $0.stop() }
         outputs.removeAll(); failures.removeAll(); graph?.stop()
     }
+
+    func resetOutput() {
+        stop()
+        graph = nil
+    }
 }
