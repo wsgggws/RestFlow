@@ -78,7 +78,7 @@ private final class EngineLoopOutput: LoopAudioOutput {
 enum AudioAssets {
     static func noiseURL(_ id: String) -> URL? {
         guard FocusNoise(rawValue: id) != nil else { return nil }
-        return Bundle.main.url(forResource: "noise-\(id)", withExtension: "wav", subdirectory: "Audio")
+        return Bundle.main.url(forResource: "noise-\(id)", withExtension: "m4a", subdirectory: "Audio")
     }
 }
 
@@ -95,7 +95,9 @@ final class FocusNoisePlayer {
 
     /// Equal-power layers, with a 2/3 master amplitude (-3.52 dB). The limiter catches summed peaks.
     static func layerVolume(_ volume: Double, count: Int) -> Float {
-        Float((2.0 / 3.0) * sqrt(max(0, min(1, volume))) / sqrt(Double(max(1, count))))
+        let amplitude = sqrt(max(0, min(1, volume)))
+        let layers = sqrt(Double(max(1, count)))
+        return Float((2.0 / 3.0) * amplitude / layers)
     }
 
     @discardableResult
