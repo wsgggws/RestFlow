@@ -10,7 +10,8 @@ are completely offline.
 
 ## Editing and playback
 
-Nine loops use stereo PCM 16-bit / 44.1 kHz, preserving the original spatial image
+The app bundles all twelve loops as lossless Apple Lossless (ALAC) in `.m4a` files.
+Nine loops decode to stereo PCM 16-bit / 44.1 kHz, preserving the original spatial image
 where present. Most last 48 seconds; traffic lasts 25 seconds and thunder 18 seconds.
 The Mandarin crowd lasts 38 seconds. Traffic joins two passes with a 0.5-second overlap, removing the silent gap.
 Each scene uses a one-second raised-cosine loop overlap, filtering, DC removal and
@@ -43,9 +44,9 @@ volume setting is changed. macOS alert sounds are not redistributed.
 
 | Output | Original | Source / license | Edits |
 | --- | --- | --- | --- |
-| `noise-stream.wav` | Stream by gluckose | [Freesound 333987](https://freesound.org/people/gluckose/sounds/333987/), CC0 | Excerpt from 12 s, mono/resample, overlap and level normalization |
-| `noise-night.wav` | Crickets Chirping At Night by Lisa Redfern | [SoundBible 2083](https://soundbible.com/2083-Crickets-Chirping-At-Night.html), Public Domain | Excerpt from 3 s, mono/resample, overlap and level normalization |
-| `noise-keyboard.wav` | CherryMX Blue — ABS keycaps by Mechvibes | [Mechvibes](https://github.com/hainguyents13/mechvibes/tree/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-blue-abs), MIT | 19 actual key-down/up pairs assembled into irregular typing phrases, overlap and level normalization |
+| `noise-stream.m4a` | Stream by gluckose | [Freesound 333987](https://freesound.org/people/gluckose/sounds/333987/), CC0 | Excerpt from 12 s, mono/resample, overlap and level normalization |
+| `noise-night.m4a` | Crickets Chirping At Night by Lisa Redfern | [SoundBible 2083](https://soundbible.com/2083-Crickets-Chirping-At-Night.html), Public Domain | Excerpt from 3 s, mono/resample, overlap and level normalization |
+| `noise-keyboard.m4a` | CherryMX Blue — ABS keycaps by Mechvibes | [Mechvibes](https://github.com/hainguyents13/mechvibes/tree/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-blue-abs), MIT | 19 actual key-down/up pairs assembled into irregular typing phrases, overlap and level normalization |
 
 Stream and summer-night input files are distributed by [Blanket at bbc88ed3](https://github.com/rafaelmardojai/blanket/blob/bbc88ed3b9dfa8b21805d77286f3183abf88f36f/SOUNDS_LICENSING.md),
 which documents the recording licenses separately from its application code. No Blanket code is included.

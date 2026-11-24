@@ -247,6 +247,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         model.refreshNotificationStatus()
     }
 
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === settingsWindow else { return }
+        window.contentView = nil
+        settingsWindow = nil
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                            willPresent notification: UNNotification,
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -434,6 +440,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
               delegate.noiseMenu?.menu.items.contains { $0.title == "Cracking thunder" } == true,
               "noise submenu and renamed thunder switch to English with the interface")
         check(delegate.statusItem.button?.toolTip == nil, "tooltip remains absent after phase and language changes")
+        click(#selector(showSettings))
+        let closedSettings = delegate.settingsWindow
+        check(closedSettings?.contentView is NSHostingView<SettingsView>, "native Settings action hosts the settings view")
+        closedSettings?.close()
+        check(delegate.settingsWindow == nil && closedSettings?.contentView == nil,
+              "closing Settings detaches its hosting view and releases the window reference")
+        click(#selector(showSettings))
+        check(delegate.settingsWindow != nil && delegate.settingsWindow !== closedSettings,
+              "native Settings action opens a fresh window after closing")
+        delegate.settingsWindow?.close()
         return failures == 0 ? 0 : 1
     }
 }

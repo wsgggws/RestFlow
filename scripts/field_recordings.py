@@ -10,7 +10,6 @@ import math
 import subprocess
 import sys
 import urllib.request
-import wave
 from pathlib import Path
 
 MANIFEST = Path(__file__).resolve().parents[1] / 'Resources/Audio/FieldRecordings.json'
@@ -112,7 +111,7 @@ def write_pcm_loop(name, values, root, rate, channels, seconds, target_rms, filt
         '-f', 's16le', '-'], input=values.tobytes())
     if len(pcm) != count*2:
         raise ValueError(f'Limiter changed loop duration: {name}')
-    with wave.open(str(root/f'noise-{name}.wav'), 'wb') as out:
-        out.setparams((channels, 2, rate, 0, 'NONE', 'not compressed'))
-        out.writeframes(pcm)
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-y', '-f', 's16le', '-ar', str(rate), '-ac', str(channels), '-i', '-',
+        '-c:a', 'alac', str(root/f'noise-{name}.m4a')], input=pcm, check=True)
     print(f'  {seconds}s / {channels}ch, input RMS={rms:.4f}, gain={gain:.3f}, look-ahead peak limit=0.92')

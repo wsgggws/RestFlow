@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import RestFlowCore
 
@@ -45,6 +46,35 @@ enum SettingsIntegrationChecks {
             (picker as? PointerTimePicker)?.finishPointerEditing()
         }
         check(window.firstResponder === previous, "time pointer exit never steals another control's keyboard focus")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("restflow-settings-check-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var preferences = AppSettings()
+        preferences.operatingSchedule.enabled = false
+        _ = try? ConfigurationStore(directory: directory).load(orCreate: preferences)
+        var now: TimeInterval = 100
+        let date = Date()
+        let model = AppModel(directory: directory, wallClock: { date.addingTimeInterval(now - 100) }, clock: { now })
+        var settingsUpdates = 0
+        var countdownUpdates = 0
+        var statisticsUpdates = 0
+        let subscriptions = [
+            model.objectWillChange.sink { settingsUpdates += 1 },
+            model.countdown.objectWillChange.sink { countdownUpdates += 1 },
+            model.statisticsDisplay.objectWillChange.sink { statisticsUpdates += 1 }
+        ]
+        withExtendedLifetime(subscriptions) {
+            now += 0.25
+            model.refresh()
+            check(settingsUpdates == 0 && countdownUpdates == 0 && statisticsUpdates > 0,
+                  "subsecond accounting updates statistics without invalidating settings or the countdown text")
+            now += 0.75
+            model.refresh()
+            check(settingsUpdates == 0 && countdownUpdates == 1 && model.countdown.text == "24:59",
+                  "a displayed second updates the countdown without invalidating settings")
+            model.togglePause()
+            check(settingsUpdates > 0 && model.isPaused, "pausing still invalidates settings controls")
+        }
         return failures == 0 ? 0 : 1
     }
 }

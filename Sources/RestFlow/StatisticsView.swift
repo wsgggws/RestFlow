@@ -3,12 +3,13 @@ import Charts
 import RestFlowCore
 
 struct StatisticsView: View {
-    @ObservedObject var model: AppModel
+    @ObservedObject var statistics: StatisticsDisplay
+    let language: AppLanguage
     @StateObject private var selection = StatisticsSelection()
     private var period: Int { selection.period }
-    private func t(_ zh: String, _ en: String) -> String { model.text(zh, en) }
+    private func t(_ zh: String, _ en: String) -> String { language.text(zh, en) }
     private var days: [DailyStatistics] {
-        let recorded = Dictionary(uniqueKeysWithValues: model.statisticsDays.map { ($0.id, $0) })
+        let recorded = Dictionary(uniqueKeysWithValues: statistics.days.map { ($0.id, $0) })
         return (0..<period).reversed().map { offset in
             let date = Calendar.current.date(byAdding: .day, value: -offset, to: Date())!
             let key = StatisticsStore.dayKey(date)
@@ -65,7 +66,7 @@ struct StatisticsView: View {
                     Text(t("还没有记录，运行一段时间后会在这里显示。", "No activity yet. Your timer activity will appear here."))
                         .foregroundStyle(.secondary).padding(.vertical, 8)
                 }
-                if let error = model.statisticsError {
+                if let error = statistics.error {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.caption).textSelection(.enabled)
                 }
                 DisclosureGroup(t("每日明细", "Daily details")) {

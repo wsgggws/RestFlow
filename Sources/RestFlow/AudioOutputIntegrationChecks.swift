@@ -22,7 +22,8 @@ enum AudioOutputIntegrationChecks {
         let headphones = AudioOutputMonitor.Output(id: 2, isExternal: true)
         let usb = AudioOutputMonitor.Output(id: 3, isExternal: true)
         var snapshot: AudioOutputMonitor.Snapshot? = .init(output: headphones, aliveDevices: [1, 2, 3])
-        let monitor = AudioOutputMonitor(readSnapshot: { snapshot })
+        var snapshotReads = 0
+        let monitor = AudioOutputMonitor(readSnapshot: { snapshotReads += 1; return snapshot })
         var changes: [Bool] = []
         monitor.start { changes.append($0) }
         monitor.refresh()
@@ -89,7 +90,14 @@ enum AudioOutputIntegrationChecks {
             app.previewBreak(); check(playing() == 0, "outside-hours preview temporarily silences standalone noise")
             app.endBreak(); check(playing() == 1, "preview exit restores the standalone mix")
             app.toggleFocusNoise(); check(playing() == 0 && !app.isFocusNoiseEnabled, "standalone noise can be explicitly switched off outside hours")
+            let disabledReads = snapshotReads
+            app.refresh(); monitor.refresh()
+            check(snapshotReads == disabledReads, "disabled noise neither polls output devices nor handles queued device events")
             app.toggleFocusNoise(); check(playing() == 1 && app.isFocusNoiseEnabled, "standalone noise can be explicitly switched back on outside hours")
+            check(snapshotReads == disabledReads + 1, "enabling noise reads a fresh output baseline")
+            let enabledReads = snapshotReads
+            app.refresh(); app.refresh()
+            check(snapshotReads == enabledReads, "timer refresh never polls output devices while noise is enabled")
             idle = 0; wall = date(13, 30); app.refresh()
             check(!app.isOutsideOperatingHours && !app.isPaused && playing() == 1, "entering operating hours ties noise to running focus")
             app.togglePause(); check(playing() == 0, "inside hours manual plan pause also pauses noise")
@@ -100,12 +108,12 @@ enum AudioOutputIntegrationChecks {
             app.togglePause(); app.restNow()
             check(app.phase.isBreak && playing() == 0, "real rest inside hours releases independent audio too")
             app.endBreak(); check(playing() == 1, "new focus inside hours restores enabled noise")
-            snapshot = .init(output: speaker, aliveDevices: [1]); app.refresh()
+            snapshot = .init(output: speaker, aliveDevices: [1]); monitor.refresh()
             check(!app.isFocusNoiseEnabled && !app.settings.focusNoiseEnabled && playing() == 0,
                   "active headphone removal immediately releases audio and unchecks the persistent switch")
             check((try? ConfigurationStore(directory: root).load(orCreate: settings).focusNoiseEnabled) == false,
                   "output disconnection persists disabled noise without modifying the selected mix")
-            snapshot = .init(output: headphones, aliveDevices: [1, 2]); app.refresh()
+            snapshot = .init(output: headphones, aliveDevices: [1, 2]); monitor.refresh()
             app.togglePause(); app.togglePause(); app.restart()
             check(!app.isFocusNoiseEnabled && playing() == 0, "reconnect, timer resume and restart never automatically re-enable disconnected noise")
             app.toggleFocusNoise()
@@ -127,10 +135,13 @@ enum AudioOutputIntegrationChecks {
             check(!app.isFocusNoiseEnabled && playing() == 0, "reload of the same enabled preference cannot bypass the output-loss latch")
             app.toggleFocusNoise()
             check(app.isFocusNoiseEnabled && playing() == 1, "user can explicitly re-enable noise after resolving a save conflict")
-            snapshot = .init(output: usb, aliveDevices: [1, 3]); app.refresh()
+            snapshot = .init(output: usb, aliveDevices: [1, 3]); monitor.refresh()
             check(app.isFocusNoiseEnabled && playing() == 1 && outputs.dropLast().allSatisfy { !$0.isPlaying },
                   "selecting a new external device from speakers rebuilds exactly one audio output")
-            app.stop(); snapshot = .init(output: nil, aliveDevices: []); monitor.refresh()
+            app.previewBreak(); app.stop()
+            let stoppedReads = snapshotReads
+            snapshot = .init(output: nil, aliveDevices: []); monitor.refresh()
+            check(snapshotReads == stoppedReads, "shutdown during preview removes output monitoring")
             check(playing() == 0, "shutdown removes route monitoring and all audio output")
         } catch { check(false, "standalone output lifecycle: \(error)") }
 

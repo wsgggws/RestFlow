@@ -56,7 +56,7 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var isPreview = false
     @Published private(set) var isAway = false
-    @Published private(set) var canDefer = false
+    private(set) var canDefer = false
     private var previewSnapshot: (engine: SessionEngine, running: Bool, resumeAfterSleep: Bool)?
     private var lastShownMessageID: String?
     private var lastShownVisual: BuiltinVisual?
@@ -68,15 +68,15 @@ final class AppModel: ObservableObject {
     private var lockObservers: [NSObjectProtocol] = []
     private let idleSeconds: () -> TimeInterval
     @Published private(set) var isOutsideOperatingHours = false
-    @Published private(set) var statisticsDays: [DailyStatistics] = []
-    @Published private(set) var statisticsError: String?
+    let statisticsDisplay = StatisticsDisplay()
     let statistics: StatisticsStore
     @Published private(set) var breakContent = BreakContent(settings: AppSettings())
     @Published private(set) var phase: SessionPhase
     @Published private(set) var isPaused = false
-    @Published private(set) var remaining: TimeInterval
-    @Published private(set) var progress: Double = 0
-    @Published private(set) var completedWorkSessions = 0
+    let countdown = CountdownDisplay()
+    private(set) var remaining: TimeInterval
+    private(set) var progress: Double = 0
+    private(set) var completedWorkSessions = 0
     @Published private(set) var notificationAuthorization: UNAuthorizationStatus = .notDetermined
     @Published var configurationError: String?
     @Published var mediaError: String?
@@ -88,6 +88,7 @@ final class AppModel: ObservableObject {
     private var noiseFocusToken: String?
     private var noiseRandomWasEnabled = false
     let focusNoise: FocusNoisePlayer
+    private var monitoringAudioOutput = false
     private let audioOutput: (any AudioOutputMonitoring)?
     @Published private(set) var noiseOutputLost = false
     var isFocusNoiseEnabled: Bool { settings.focusNoiseEnabled && !noiseOutputLost }
@@ -133,8 +134,8 @@ final class AppModel: ObservableObject {
         let configuration = ConfigurationStore(directory: directory ?? ConfigurationStore.defaultDirectory)
         self.configuration = configuration
         statistics = StatisticsStore(directory: configuration.directory)
-        do { try statistics.load() } catch { statisticsError = error.localizedDescription }
-        statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
+        do { try statistics.load() } catch { statisticsDisplay.error = error.localizedDescription }
+        statisticsDisplay.updateDays(from: statistics)
         MediaStore.configurationDirectory = configuration.directory
         let loaded: AppSettings
         var errorMessage: String?
@@ -159,7 +160,6 @@ final class AppModel: ObservableObject {
             isPaused = true
         }
         lastObservation = (clock(), wallClock())
-        self.audioOutput?.start { [weak self] lost in self?.audioOutputChanged(lost: lost) }
         synchronizeOperatingHours()
         publish(at: clock())
     }
@@ -333,7 +333,6 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
-        audioOutput?.stop()
         if isPreview { finishPreview() }
         accountElapsed()
         synchronizeOperatingHours()
@@ -345,13 +344,14 @@ final class AppModel: ObservableObject {
         lockObservers.forEach { DistributedNotificationCenter.default().removeObserver($0) }
         lockObservers.removeAll()
         feedback.stop()
+        audioOutput?.stop()
+        monitoringAudioOutput = false
         focusNoise.stop()
         feedback.clearNotification()
         shortcuts.stop()
     }
 
     func refresh() {
-        audioOutput?.refresh()
         var current = now
         if current >= nextConfigCheck {
             nextConfigCheck = current + 1
@@ -595,9 +595,10 @@ final class AppModel: ObservableObject {
     private func publish(at current: TimeInterval) {
         canDefer = settings.deferEnabled && !isPreview && !isAway && !isOutsideOperatingHours &&
             engine.phase == .work && !engine.isPaused && !engine.didDefer && engine.remaining(at: current) > 0
-        phase = engine.phase
-        isPaused = engine.isPaused
+        if phase != engine.phase { phase = engine.phase }
+        if isPaused != engine.isPaused { isPaused = engine.isPaused }
         remaining = engine.remaining(at: current)
+        countdown.update(timeText)
         completedWorkSessions = engine.completedWorkSessions
         progress = max(0, min(1, 1 - remaining / engine.phaseDuration))
         synchronizeFocusNoise()
@@ -605,6 +606,12 @@ final class AppModel: ObservableObject {
     }
 
     private func synchronizeFocusNoise() {
+        if monitoringAudioOutput != isFocusNoiseEnabled {
+            monitoringAudioOutput = isFocusNoiseEnabled
+            if monitoringAudioOutput {
+                audioOutput?.start { [weak self] lost in self?.audioOutputChanged(lost: lost) }
+            } else { audioOutput?.stop() }
+        }
         // Preview temporarily borrows the timer; keep the original focus's selection and playhead.
         let newSegment = noiseFocusToken != focusToken
         let invalidRandom = settings.focusNoiseRandom && randomNoiseIDs.count != settings.focusNoiseRandomCount
@@ -654,7 +661,7 @@ final class AppModel: ObservableObject {
         guard elapsed > 0, abs(date.timeIntervalSince(previous.date) - elapsed) < 2 else { return }
         if isAway {
             statistics.recordAway(from: previous.date, to: date, schedule: schedule ?? settings.operatingSchedule)
-            statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
+            statisticsDisplay.updateDays(from: statistics)
             return
         }
         guard !engine.isPaused else { return }
@@ -681,8 +688,7 @@ final class AppModel: ObservableObject {
             observedRest = true
             lastRestDate = (schedule.segments(from: previous.date, to: end).last?.end ?? end).addingTimeInterval(-0.001)
         }
-        let days = statistics.days.values.sorted { $0.id < $1.id }
-        if days != statisticsDays { statisticsDays = days }
+        statisticsDisplay.updateDays(from: statistics)
     }
 
     private func beginObservedBreak() {
@@ -694,12 +700,14 @@ final class AppModel: ObservableObject {
         guard observedRest else { return }
         statistics.finishBreak(on: lastRestDate, completed: completed)
         observedRest = false
-        statisticsDays = statistics.days.values.sorted { $0.id < $1.id }
+        statisticsDisplay.updateDays(from: statistics)
     }
 
     private func flushStatistics() {
-        do { try statistics.save(); statisticsError = nil }
-        catch { statisticsError = error.localizedDescription }
+        let message: String?
+        do { try statistics.save(); message = nil }
+        catch { message = error.localizedDescription }
+        if statisticsDisplay.error != message { statisticsDisplay.error = message }
     }
 
     /// Only elapsed idle duration is observed; no input contents or application names are collected.
@@ -763,7 +771,7 @@ final class AppModel: ObservableObject {
             scheduleBoundary = nil
         }
         let changed = outside != isOutsideOperatingHours
-        isOutsideOperatingHours = outside
+        if changed { isOutsideOperatingHours = outside }
         if outside {
             if engine.phase.isBreak {
                 finishObservedBreak(completed: false)
@@ -788,5 +796,25 @@ final class AppModel: ObservableObject {
     static func formatTime(_ seconds: TimeInterval) -> String {
         let seconds = max(0, Int(ceil(seconds)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+@MainActor
+final class CountdownDisplay: ObservableObject {
+    @Published private(set) var text = ""
+
+    func update(_ text: String) {
+        if self.text != text { self.text = text }
+    }
+}
+
+@MainActor
+final class StatisticsDisplay: ObservableObject {
+    @Published private(set) var days: [DailyStatistics] = []
+    @Published var error: String?
+
+    func updateDays(from store: StatisticsStore) {
+        let days = store.days.values.sorted { $0.id < $1.id }
+        if self.days != days { self.days = days }
     }
 }

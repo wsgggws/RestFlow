@@ -18,7 +18,7 @@ struct SettingsView: View {
                 Spacer()
                 Text(model.isPreview ? t("预览", "Preview") : (model.isAway ? t("已离开", "Away") : (model.isOutsideOperatingHours ? t("非运行时段", "Outside hours") : (model.isPaused ? t("已暂停", "Paused") : model.phaseTitle))))
                     .font(.caption).foregroundStyle(.secondary)
-                Text(model.timeText).font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
+                CountdownText(countdown: model.countdown).font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
                 Button(model.isPaused ? t("继续", "Resume") : t("暂停", "Pause")) { model.togglePause() }.disabled(!model.isPreview && (model.isOutsideOperatingHours || model.isAway))
                 Button(t("重新开始", "Restart")) { model.restart() }
             }.padding(16)
@@ -34,7 +34,7 @@ struct SettingsView: View {
                 generalTab.tabItem { Label(t("通用", "General"), systemImage: "gearshape") }
                 planTab.tabItem { Label(t("计划", "Schedule"), systemImage: "timer") }
                 appearanceTab.tabItem { Label(t("休息", "Break"), systemImage: "photo") }
-                StatisticsView(model: model).tabItem { Label(t("统计", "Statistics"), systemImage: "chart.bar") }
+                StatisticsView(statistics: model.statisticsDisplay, language: model.settings.language).tabItem { Label(t("统计", "Statistics"), systemImage: "chart.bar") }
             }.padding(.horizontal, 16).padding(.bottom, 12)
 
             Divider()
@@ -401,3 +401,8 @@ struct SettingsView: View {
 }
 
 private final class NoiseChoicesState: ObservableObject { @Published var expanded = false }
+
+struct CountdownText: View {
+    @ObservedObject var countdown: CountdownDisplay
+    var body: some View { Text(countdown.text) }
+}

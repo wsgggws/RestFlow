@@ -36,7 +36,7 @@ struct BreakView: View {
                                 .foregroundStyle(palette.message).multilineTextAlignment(.center)
                                 .lineLimit(5).frame(maxWidth: 650)
                         }
-                        Text(model.timeText)
+                        CountdownText(countdown: model.countdown)
                             .font(.system(size: 56, weight: .ultraLight, design: .rounded))
                             .monospacedDigit().foregroundStyle(palette.time)
                         if model.isPaused {
