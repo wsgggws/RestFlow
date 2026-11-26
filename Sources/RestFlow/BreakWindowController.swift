@@ -11,6 +11,7 @@ final class BreakWindowController {
     init(model: AppModel) { self.model = model }
 
     func sync() {
+        guard !model.isCleaning else { return }
         if model.phase.isBreak {
             showAllScreens()
         } else {
@@ -19,12 +20,13 @@ final class BreakWindowController {
     }
 
     func restNow() {
-        guard !model.isOutsideOperatingHours else { return }
+        guard !model.isCleaning, !model.isOutsideOperatingHours else { return }
         model.restNow()
         if model.phase.isBreak { showAllScreens() }
     }
 
     func preview() {
+        guard !model.isCleaning else { return }
         guard !model.phase.isBreak else { showAllScreens(); return }
         model.previewBreak()
         if windows.isEmpty { showAllScreens() }
@@ -40,6 +42,7 @@ final class BreakWindowController {
     }
 
     func reconcilePresentation() {
+        guard !model.isCleaning else { return }
         let shouldShow = model.settings.showsBreakScreen(for: model.phase)
         if shouldShow != !windows.isEmpty { sync() }
     }

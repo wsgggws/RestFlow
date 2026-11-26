@@ -9,6 +9,10 @@ enum RestFlowApp {
     @MainActor
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--check-cleaning-integration") {
+            app.setActivationPolicy(.accessory)
+            exit(Int32(CleaningIntegrationChecks.run()))
+        }
         if CommandLine.arguments.contains("--check-settings-integration") { exit(Int32(SettingsIntegrationChecks.run())) }
         if CommandLine.arguments.contains("--check-wellbeing-integration") { exit(WellbeingIntegrationChecks.run()) }
         if CommandLine.arguments.contains("--check-activity-integration") { exit(ActivityIntegrationChecks.run()) }
@@ -40,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var lastShowsTime: Bool?
     private var lastStatusTitle: String?
     private var breakWindows: BreakWindowController!
+    private var cleaningWindows: CleaningWindowController!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var phaseMenuItem: NSMenuItem?
@@ -52,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let configDirectory = args.firstIndex(of: "--config-dir").flatMap { $0 + 1 < args.count ? URL(fileURLWithPath: args[$0 + 1], isDirectory: true) : nil }
         model = AppModel(directory: configDirectory)
         breakWindows = BreakWindowController(model: model)
+        cleaningWindows = CleaningWindowController(model: model)
+        cleaningWindows.onError = { [weak self] error in self?.showCleaningError(error) }
         model.shortcuts.perform = { [weak self] action in
             switch action {
             case .pause: self?.togglePause()
@@ -79,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.settingsWindow?.title = self.settingsTitle
             self.breakWindows.updateTitles()
             self.breakWindows.reconcilePresentation()
+            self.cleaningWindows.reconcileScreens()
             self.refreshStatus()
             self.updates.checkAutomaticallyIfNeeded(enabled: self.model.settings.checkForUpdatesAutomatically)
         }
@@ -86,7 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.breakWindows.screensChanged() }
+            Task { @MainActor in
+                self?.breakWindows.screensChanged()
+                self?.cleaningWindows.reconcileScreens()
+            }
         }
         model.start()
         updates.checkAutomaticallyIfNeeded(enabled: model.settings.checkForUpdatesAutomatically)
@@ -108,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationWillTerminate(_ notification: Notification) {
         updates.stop()
         model?.stop()
+        cleaningWindows?.stop(restoreApplication: false)
         breakWindows?.close()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
     }
@@ -168,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         addItem(model.isPaused ? model.text("继续计划", "Resume plan") : model.text("暂停计划", "Pause plan"),
                 action: #selector(togglePause), shortcut: model.settings.pauseShortcut, to: menu)
         addItem(model.text("重新开始", "Restart"), action: #selector(restart), shortcut: model.settings.restartShortcut, to: menu)
+        menu.addItem(.separator())
+        addItem(model.text("屏幕键盘护理…", "Screen & keyboard cleaning…"), action: #selector(startCleaning), to: menu)
         if model.settings.deferEnabled && !model.phase.isBreak {
             addItem(model.text("延后 3 分钟", "Delay break by 3 minutes"), action: #selector(deferBreak), to: menu)
         }
@@ -194,6 +208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.keyEquivalentModifierMask = ShortcutController.cocoaModifiers(shortcut)
         }
         if action == #selector(deferBreak) { item.isEnabled = model.canDefer }
+        if action == #selector(startCleaning) { item.isEnabled = !model.phase.isBreak && !model.isPreview && !model.isCleaning }
+        if model.isCleaning && action != #selector(quit) { item.isEnabled = false }
         item.target = self
         menu.addItem(item)
     }
@@ -208,6 +224,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func restNow() { breakWindows.restNow() }
     @objc private func togglePause() { model.togglePause() }
     @objc private func restart() { model.restart() }
+    @objc private func startCleaning() {
+        // Begin after native menu tracking completes, so its mouse-up cannot escape protection.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            do { try self.cleaningWindows.start() }
+            catch { self.showCleaningError(error as? CleaningProtectionError ?? .unavailable) }
+        }
+    }
+
+    private func showCleaningError(_ error: CleaningProtectionError) {
+        let alert = NSAlert()
+        alert.messageText = model.text("屏幕键盘护理", "Screen & keyboard cleaning")
+        alert.informativeText = error.message(in: model.settings.language)
+        if case .accessibilityRequired = error {
+            alert.addButton(withTitle: model.text("打开系统设置…", "Open System Settings…"))
+            alert.addButton(withTitle: model.text("取消", "Cancel"))
+            if alert.runModal() == .alertFirstButtonReturn { CleaningInputGuard.requestAccessibility() }
+        } else {
+            alert.addButton(withTitle: model.text("好", "OK"))
+            alert.runModal()
+        }
+    }
     @objc private func endBreak() { model.endBreak() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
     @objc private func toggleMenuBarTime() {
@@ -231,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func showSettings() {
+        guard !model.isCleaning else { return }
         if settingsWindow == nil {
             let view = SettingsView(model: model, updates: updates) { [weak self] in self?.breakWindows.preview() }
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
@@ -329,6 +368,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
               primary[5].action == #selector(restart),
               "primary menu order is Settings, Enable noise, Change noise, Rest now, Pause plan, Restart")
         check(item(#selector(togglePause))?.title == "继续计划", "paused plan offers Resume plan")
+        check(item(#selector(startCleaning))?.title == "屏幕键盘护理…" && item(#selector(startCleaning))?.isEnabled == true,
+              "cleaning entry is available during focus without granting input permission")
         let noiseMenu = delegate.noiseMenu!.menu
         check(noiseMenu.items.filter { !$0.isSeparatorItem }.count == 13,
               "hover submenu contains Random and exactly twelve specific noises")
@@ -436,6 +477,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         delegate.model.settings.language = .english
         delegate.menuWillOpen(menu)
         check(menu.items.first?.title == "Rest: 00:30", "menu phase label switches to English")
+        check(item(#selector(startCleaning))?.title == "Screen & keyboard cleaning…" && item(#selector(startCleaning))?.isEnabled == false,
+              "cleaning entry localizes and excludes an existing rest session")
         check(menu.items.contains { $0.title == "Change white noise" } &&
               delegate.noiseMenu?.menu.items.contains { $0.title == "Cracking thunder" } == true,
               "noise submenu and renamed thunder switch to English with the interface")

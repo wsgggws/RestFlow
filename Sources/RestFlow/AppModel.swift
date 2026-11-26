@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
         }
     }
     @Published private(set) var isPreview = false
+    @Published private(set) var isCleaning = false
+    private var cleaningSnapshot: (engine: SessionEngine, running: Bool, beganAt: TimeInterval)?
     @Published private(set) var isAway = false
     private(set) var canDefer = false
     private var previewSnapshot: (engine: SessionEngine, running: Bool, resumeAfterSleep: Bool)?
@@ -65,6 +67,7 @@ final class AppModel: ObservableObject {
     private var idlePauseAt: TimeInterval?
     private var screenLocked = false
     private var isSleeping = false
+    private var isStopping = false
     private var lockObservers: [NSObjectProtocol] = []
     private let idleSeconds: () -> TimeInterval
     @Published private(set) var isOutsideOperatingHours = false
@@ -100,6 +103,7 @@ final class AppModel: ObservableObject {
     var onPhaseChange: (() -> Void)?
     var onSettingsChange: (() -> Void)?
     var onRefresh: (() -> Void)?
+    var onCleaningInterruption: (() -> Void)?
     private var engine: SessionEngine
     private var timer: Timer?
     private var applyingFile = false
@@ -171,7 +175,7 @@ final class AppModel: ObservableObject {
     }
 
     func previewBreak() {
-        guard !engine.phase.isBreak else { return }
+        guard !isCleaning, !engine.phase.isBreak else { return }
         refresh()
         guard !engine.phase.isBreak else { return }
         let running = !engine.isPaused
@@ -184,6 +188,43 @@ final class AppModel: ObservableObject {
         feedback.stop(); feedback.clearNotification()
         publish(at: now)
         onPhaseChange?()
+    }
+
+    @discardableResult
+    func beginCleaning() -> Bool {
+        guard !isCleaning, !isPreview, !engine.phase.isBreak, !isSleeping, !screenLocked, !isStopping else { return false }
+        refresh()
+        guard !engine.phase.isBreak, !isPreview else { return false }
+        var saved = engine
+        let running = !saved.isPaused
+        saved.pause(at: now)
+        cleaningSnapshot = (saved, running, now)
+        isCleaning = true
+        engine.pause(at: now)
+        feedback.stop(); feedback.clearNotification()
+        lastObservation = (now, wallClock())
+        publish(at: now)
+        flushStatistics()
+        return true
+    }
+
+    func endCleaning() {
+        guard let saved = cleaningSnapshot else { return }
+        engine = saved.engine
+        engine.plan = settings.plan
+        if saved.running { engine.resume(at: now) }
+        if let awayResetAt { self.awayResetAt = awayResetAt + max(0, now - saved.beganAt) }
+        cleaningSnapshot = nil
+        isCleaning = false
+        lastObservation = (now, wallClock())
+        synchronizeOperatingHours()
+        publish(at: now)
+    }
+
+    private func interruptCleaning() {
+        guard isCleaning else { return }
+        onCleaningInterruption?()
+        endCleaning() // Also restores state for diagnostics without a window controller.
     }
 
     private func finishPreview() {
@@ -296,6 +337,7 @@ final class AppModel: ObservableObject {
     }
 
     var menuStatusText: String {
+        if isCleaning { return text("屏幕键盘护理 · 按住 Esc 3 秒退出", "Screen & keyboard cleaning · Hold Esc for 3 seconds") }
         if isPreview { return text("预览：", "Preview: ") + timeText }
         if isAway { return text("已离开 · 计时暂停", "Away · Timer paused") }
         if isOutsideOperatingHours { return text("非运行时段", "Outside operating hours") }
@@ -333,6 +375,8 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        isStopping = true
+        interruptCleaning()
         if isPreview { finishPreview() }
         accountElapsed()
         synchronizeOperatingHours()
@@ -385,6 +429,7 @@ final class AppModel: ObservableObject {
     }
 
     func togglePause() {
+        guard !isCleaning else { return }
         guard isPreview || (!isOutsideOperatingHours && !isAway) else { return }
         resumeAfterSleep = false
         refresh()
@@ -397,6 +442,7 @@ final class AppModel: ObservableObject {
     }
 
     func restart() {
+        guard !isCleaning else { return }
         if isPreview { finishPreview() }
         focusToken = UUID().uuidString
         resumeAfterSleep = false
@@ -414,7 +460,7 @@ final class AppModel: ObservableObject {
     }
 
     func startShortBreak() {
-        guard !phase.isBreak, !isOutsideOperatingHours else { return }
+        guard !isCleaning, !phase.isBreak, !isOutsideOperatingHours else { return }
         accountElapsed()
         resumeAfterSleep = false
         synchronizeOperatingHours()
@@ -429,6 +475,7 @@ final class AppModel: ObservableObject {
     }
 
     func restNow() {
+        guard !isCleaning else { return }
         refresh()
         guard !engine.phase.isBreak, !isOutsideOperatingHours, !isAway else { return }
         accountElapsed()
@@ -593,7 +640,7 @@ final class AppModel: ObservableObject {
     }
 
     private func publish(at current: TimeInterval) {
-        canDefer = settings.deferEnabled && !isPreview && !isAway && !isOutsideOperatingHours &&
+        canDefer = settings.deferEnabled && !isCleaning && !isPreview && !isAway && !isOutsideOperatingHours &&
             engine.phase == .work && !engine.isPaused && !engine.didDefer && engine.remaining(at: current) > 0
         if phase != engine.phase { phase = engine.phase }
         if isPaused != engine.isPaused { isPaused = engine.isPaused }
@@ -606,8 +653,9 @@ final class AppModel: ObservableObject {
     }
 
     private func synchronizeFocusNoise() {
-        if monitoringAudioOutput != isFocusNoiseEnabled {
-            monitoringAudioOutput = isFocusNoiseEnabled
+        let shouldMonitor = isFocusNoiseEnabled && !isStopping
+        if monitoringAudioOutput != shouldMonitor {
+            monitoringAudioOutput = shouldMonitor
             if monitoringAudioOutput {
                 audioOutput?.start { [weak self] lost in self?.audioOutputChanged(lost: lost) }
             } else { audioOutput?.stop() }
@@ -622,9 +670,9 @@ final class AppModel: ObservableObject {
             noiseRandomWasEnabled = settings.focusNoiseRandom
         }
         resolvedNoiseIDs = settings.focusNoiseRandom ? randomNoiseIDs : settings.focusNoiseIDs
-        let retainMix = isFocusNoiseEnabled && (phase == .work || isPreview)
+        let retainMix = isFocusNoiseEnabled && !isStopping && (phase == .work || isPreview)
         let eligible = isOutsideOperatingHours || (!isPaused && !isAway)
-        let running = retainMix && eligible && !isPreview && !screenLocked && !isSleeping
+        let running = retainMix && eligible && !isPreview && !isCleaning && !screenLocked && !isSleeping
         let error = focusNoise.sync(ids: retainMix ? resolvedNoiseIDs : [], volume: settings.focusNoiseVolume, running: running)
         let message = error.map { text("白噪音无法播放：", "Unable to play focus noise: ") + $0 }
         if focusNoiseError != message { focusNoiseError = message }
@@ -632,8 +680,9 @@ final class AppModel: ObservableObject {
 
     func willSleep() {
         accountElapsed()
-        flushStatistics()
         isSleeping = true
+        interruptCleaning()
+        flushStatistics()
         guard !engine.isPaused else { publish(at: now); return }
         engine.pause(at: now)
         resumeAfterSleep = true
@@ -655,7 +704,7 @@ final class AppModel: ObservableObject {
     private func accountElapsed(schedule: OperatingSchedule? = nil) {
         let current = now, date = wallClock()
         defer { lastObservation = (current, date) }
-        guard let previous = lastObservation, !isPreview else { return }
+        guard let previous = lastObservation, !isPreview, !isCleaning else { return }
         let elapsed = current - previous.time
         // A clock/timezone correction cannot invent hours of activity.
         guard elapsed > 0, abs(date.timeIntervalSince(previous.date) - elapsed) < 2 else { return }
@@ -712,7 +761,7 @@ final class AppModel: ObservableObject {
 
     /// Only elapsed idle duration is observed; no input contents or application names are collected.
     private func synchronizePresence() {
-        guard !isPreview else { return }
+        guard !isPreview, !isCleaning else { return }
         let idle = max(0, idleSeconds())
         let absent = screenLocked || (settings.idleDetectionEnabled && idle >= 60)
         if isAway && !absent {
@@ -734,6 +783,10 @@ final class AppModel: ObservableObject {
     }
 
     func setScreenLocked(_ locked: Bool) {
+        if locked && isCleaning {
+            screenLocked = true // Prevent audio from briefly resuming while the snapshot is restored.
+            interruptCleaning()
+        }
         guard !isPreview else { if locked { finishPreview(); setScreenLocked(true) }; return }
         accountElapsed()
         if locked && resumeAfterSleep {
@@ -758,7 +811,7 @@ final class AppModel: ObservableObject {
     }
 
     private func synchronizeOperatingHours() {
-        guard !isPreview else { return }
+        guard !isPreview, !isCleaning else { return }
         let previousPhase = engine.phase, previouslyPaused = engine.isPaused
         let outside = !settings.operatingSchedule.contains(wallClock())
         if let boundary = scheduleBoundary {
